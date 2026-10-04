@@ -15,6 +15,7 @@ const TERMINAL_FEE = 30, DOOR_FEE = 50, DISCOUNT = 0.2, REBOOK_FEE = 100;
 const BAG_FEE = 150, PET_FEE = 150, INS_FEE = 40;
 // Demo only: a real ticket is signed on the server with a private key the phone never sees.
 const QR_SECRET = 'demo-signing-key';
+const MERCHANT = 'Biyahe Bicol Demo Lines';
 const HOLD_SECONDS = 600;      // seats are held this long at checkout
 const CLOSE_MIN = 30;          // online booking closes this long before departure
 const CHANGE_CUTOFF_H = 4;     // rebook / cancel up to this many hours before departure
@@ -83,8 +84,12 @@ const STATUS_CLASS = {
 /* ------------------------------------------------------- storage and state */
 
 const STORE = 'bb_site_v1';
-const DB = Object.assign({ bookings: [], parcels: [], profile: null, points: 0, lang: 'en', notes: [], follow: [] },
+const DB = Object.assign({ bookings: [], parcels: [], profile: null, points: 0, lang: 'en', notes: [], follow: [], counter: [], saved: [], fares: null, advisory: null },
     (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { return {}; } })());
+// fares the operator changed in the console override the built-in ones
+const BASE_FARES = JSON.parse(JSON.stringify(ROUTES));
+function applyFares() { Object.keys(ROUTES).forEach(d => { const f = (DB.fares && DB.fares[d]) || BASE_FARES[d]; ROUTES[d].fc = f.fc; ROUTES[d].std = f.std; }); }
+applyFares();
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify(DB)); } catch (e) { /* private mode: keep going in memory */ } };
 
 const S = {
@@ -195,6 +200,7 @@ function showView(view) {
     view = guard(view);
     // walking away from checkout releases the held seats
     if (currentView === 'view-checkout' && view !== 'view-checkout' && view !== 'view-ticket') releaseSelection();
+    if (currentView === 'view-scan' && view !== 'view-scan') stopCamera();
     currentView = view;
     VIEWS.forEach(v => { const el = $(v); el.classList.toggle('hidden', v !== view); el.classList.toggle('block', v === view); });
     const tab = TAB_OF[view] || view;
@@ -211,6 +217,8 @@ function refreshView() {
     if (currentView === 'view-trips') renderTrips();
     if (currentView === 'view-schedules') renderSchedules();
     if (currentView === 'view-track') renderFIDS();
+    if (currentView === 'view-home') { renderFeatured(); renderAdvisory(); }
+    if (currentView === 'view-help') renderAdvisory();
     if (currentView === 'view-cargo') { prefillCargo(); renderCargoQuote(); }
     if (currentView === 'view-account') renderAccount();
     if (currentView === 'view-ops') renderOps();
@@ -411,6 +419,7 @@ function occupied(tripId, kind, date, exceptRef) {
         if (b.status === 'cancelled' || b.ref === exceptRef) return;
         b.legs.forEach(l => { if (l.tripId === tripId && l.date === date) l.seats.forEach(x => set.add(x)); });
     });
+    DB.counter.forEach(c => { if (c.tripId === tripId && c.date === date) set.add(c.seat); });   // sold at the terminal counter
     return set;
 }
 
@@ -625,7 +634,9 @@ function renderCheckout() {
     const petOk = S.legs.every(l => l.kind === 'std');
     $('addPet').disabled = !petOk;
     $('addPetNote').textContent = petOk ? 'Small cat or dog up to 10 kg, in a closed carrier at your feet.' : 'Pets ride on Standard coaches only, so this is off for a First Class trip.';
+    $('payError').classList.add('hidden');
     autofillCheckout();
+    renderSaved();
     renderSummary();
 }
 
@@ -707,6 +718,7 @@ function startHold() {
         $('holdTimer').textContent = `${pad(Math.floor(left / 60))}:${pad(left % 60)}`;
         if (left === 0 && !paying) {
             stopHold();
+            closeModal('payModal');
             toast('Your seat hold ran out. Please choose your seats again.', 'error');
             releaseSelection();
             navigateTo('view-results');
@@ -730,12 +742,45 @@ function highlightPayment() {
 }
 
 let paying = false;
+// Pay button: show the wallet, QR or card screen for the chosen method first
 function processPayment() {
     if (paying || !S.legs.length) return;
+    $('payError').classList.add('hidden');
+    openPay();
+}
+function openPay() {
+    const method = document.querySelector('input[name="payment"]:checked').value, amt = formatPHP(totals().total);
+    const head = { gcash: ['bg-[#0052FE]', 'GCash'], maya: ['bg-slate-900', 'maya'], qrph: ['bg-blue-900', 'QR Ph'], card: ['bg-slate-700', 'Card payment'] }[method];
+    const mid = method === 'qrph'
+        ? '<div class="qr bg-white p-2 rounded-xl border border-slate-200 mx-auto w-fit"><div id="payQR" class="w-32 h-32"></div></div><p class="text-sm text-slate-600 text-center">Scan with any bank or e-wallet app, then tap the button below.</p>'
+        : method === 'card'
+            ? '<div class="bg-slate-50 border border-slate-200 rounded-xl p-4"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Test card</div><div class="font-mono font-bold text-slate-800 text-lg">4242 •••• •••• 4242</div><div class="text-xs text-slate-500">No real card details are asked for in this demo.</div></div>'
+            : `<div class="bg-slate-50 border border-slate-200 rounded-xl p-4"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Wallet number</div><div class="font-mono font-bold text-slate-800 text-lg">${esc($('chkMobile').value)}</div><div class="text-xs text-slate-500">You would approve this with your MPIN in the wallet app.</div></div>`;
+    $('payBody').innerHTML = `
+        <div class="${head[0]} text-white p-5"><div class="font-black italic text-2xl">${head[1]}</div><div class="text-xs opacity-80 mt-1">Paying ${MERCHANT}</div></div>
+        <div class="p-5 space-y-4">
+            <div class="text-center"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Amount due</div><div class="text-3xl font-black text-slate-800">${amt}</div></div>
+            ${mid}
+            <button onclick="finishPayment(true)" class="btn-blue w-full py-3.5">${method === 'qrph' ? 'I have paid' : 'Pay ' + amt}</button>
+            <button onclick="finishPayment(false)" class="btn-ghost w-full py-3 text-sm">Simulate a failed payment</button>
+            <button onclick="closeModal('payModal')" class="w-full text-sm font-bold text-slate-500 hover:text-brand-red py-1">Cancel</button>
+        </div>`;
+    if (method === 'qrph') drawQR($('payQR'), `QRPH|${MERCHANT}|${totals().total}`);
+    openModal('payModal');
+}
+function finishPayment(ok) {
+    if (paying || !S.legs.length) return;
     paying = true;
+    closeModal('payModal');
     openModal('paymentProcessingModal');
     setTimeout(() => {
         closeModal('paymentProcessingModal');
+        if (!ok) {   // declined: nothing is booked, the hold keeps running, the passenger can retry
+            paying = false;
+            $('payError').classList.remove('hidden');
+            toast('Payment did not go through. Nothing was charged.', 'error');
+            return;
+        }
         const x = totals(), types = paxTypes();
         const methodMap = { gcash: 'GCash', maya: 'Maya', qrph: 'QR Ph', card: 'Card' };
         const earned = DB.profile ? Math.floor(x.total / 20) : 0;
@@ -753,6 +798,8 @@ function processPayment() {
         DB.bookings.unshift(b);
         if (DB.profile) {
             DB.points = DB.points - x.pts + earned;
+            b.pax.forEach(p => { if (!DB.saved.some(x => x.name === p.name)) DB.saved.unshift({ name: p.name, type: p.type }); });
+            DB.saved.length = Math.min(DB.saved.length, 8);
             if (!DB.profile.first) { const parts = $('paxName0').value.trim().split(/\s+/); DB.profile.last = parts.length > 1 ? parts.pop() : ''; DB.profile.first = parts.join(' '); }
         }
         save();
@@ -879,7 +926,10 @@ function renderTrips() {
             <div class="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-2xl mx-auto mb-4"><i class="fa-solid fa-ticket"></i></div>
             <h3 class="font-black text-slate-800 text-lg mb-1">No trips yet</h3>
             <p class="text-sm text-slate-500 mb-5">Tickets you book on this device appear here and open without a signal.</p>
-            <button onclick="navigateTo('view-home')" class="btn-red px-6 py-3">${t('Book Your Trip')}</button>
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <button onclick="navigateTo('view-home')" class="btn-red px-6 py-3">${t('Book Your Trip')}</button>
+                <button onclick="loadSample()" class="btn-ghost px-6 py-3">Load a sample trip</button>
+            </div>
         </div>`;
 
     $('parcelsHead').classList.toggle('hidden', !DB.parcels.length);
@@ -1035,6 +1085,7 @@ function renderFIDS() {
         <div class="flex justify-between text-sm text-slate-400 mt-2"><span>Sched ${r.sched} · ETA <span class="text-white font-bold">${r.eta}</span></span></div>
         <div class="text-sm text-slate-400 mt-1"><i class="fa-solid fa-location-dot mr-1 text-slate-500"></i>${r.loc}</div></div>`).join('');
     $('fidsEmpty').classList.toggle('hidden', rows.length > 0);
+    renderMap();
 }
 
 function toggleFollow(id) {
@@ -1182,13 +1233,14 @@ function opsTrips() {
 
 function renderOps() {
     const rows = opsTrips();
-    const sold = rows.reduce((a, r) => a + r.sold, 0), total = rows.reduce((a, r) => a + r.total, 0), rev = rows.reduce((a, r) => a + r.rev, 0);
+    const sold = rows.reduce((a, r) => a + r.sold, 0), total = rows.reduce((a, r) => a + r.total, 0);
+    const sales = opsSales(rows), rev = sales.total;
     const app = DB.bookings.filter(b => b.status !== 'cancelled' && b.legs.some(l => l.date === rows[0].date)).length;
     const kpi = (label, val, sub) => `<div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${label}</div><div class="text-2xl font-black text-slate-800 mt-1">${val}</div><div class="text-xs text-slate-500">${sub}</div></div>`;
     $('opsKpis').innerHTML =
         kpi('Departures', rows.length, fmtDate(rows[0].date)) +
         kpi('Seats sold', `${sold} / ${total}`, `${Math.round(sold / total * 100)}% load factor`) +
-        kpi('Fare revenue', formatPHP(rev).replace('.00', ''), 'Before discounts and fees') +
+        kpi('Fare revenue', formatPHP(rev).replace('.00', ''), 'After discounts, before fees') +
         kpi('App bookings', app, 'Made on this device');
     const stCls = { 'SCHEDULED': 'bg-slate-100 text-slate-600 border-slate-200', 'ON TIME': 'bg-blue-50 text-blue-700 border-blue-200', 'BOARDING': 'bg-green-50 text-green-700 border-green-200', 'DELAYED': 'bg-amber-50 text-amber-700 border-amber-200', 'EARLY': 'bg-purple-50 text-purple-700 border-purple-200' };
     $('opsTrips').innerHTML = rows.map(r => {
@@ -1206,6 +1258,8 @@ function renderOps() {
                 <button onclick="opsDelay('${r.tr.id}')" ${r.isToday ? '' : 'disabled'} class="btn-ghost px-3 py-2 text-xs !text-amber-700" title="Marks the bus 15 minutes late on the live board and alerts its passengers">+15 min</button>
             </td></tr>`;
     }).join('');
+    renderSalesChart(sales);
+    renderOpsAdmin();
     renderManifest();
 }
 
@@ -1222,16 +1276,9 @@ function renderManifest() {
     const box = $('opsManifest'), r = opsTrips().find(x => x.tr.id === S.manifest);
     box.classList.toggle('hidden', !r);
     if (!r) return;
-    const { tr, date } = r, mine = {};
-    DB.bookings.forEach(b => {
-        if (b.status === 'cancelled') return;
-        b.legs.forEach((l, i) => {
-            if (l.tripId !== tr.id || l.date !== date) return;
-            l.seats.forEach(seat => { const p = b.pax.find(x => x.seats && x.seats[i] === seat) || b.pax[0]; mine[seat] = { name: p.name, ref: b.ref, channel: 'App', type: p.type, boarded: !!l.boarded }; });
-        });
-    });
-    const list = [...occupied(tr.id, tr.kind, date)].sort().map(seat => Object.assign({ seat }, mine[seat] || genPassenger(tr.id, date, seat)));
+    const { tr, date } = r, list = manifestList(tr, date);
     const boarded = list.filter(x => x.boarded).length;
+    const occ = occupied(tr.id, tr.kind, date), free = Array.from({ length: r.total }, (_, i) => pad(i + 1)).filter(x => !occ.has(x));
     box.innerHTML = `
         <div class="px-5 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div><h3 class="font-black text-slate-800">Manifest · ${tr.id} · ${esc(short(tr.from))} ➔ ${esc(short(tr.to))}</h3>
@@ -1240,7 +1287,7 @@ function renderManifest() {
         </div>
         <div class="overflow-x-auto"><table class="w-full text-sm text-left">
             <thead><tr class="text-[10px] uppercase tracking-widest text-slate-400"><th class="p-3">Seat</th><th class="p-3">Passenger</th><th class="p-3">Booking</th><th class="p-3">Fare</th><th class="p-3">Sold via</th><th class="p-3">Boarded</th></tr></thead>
-            <tbody>${list.map(x => `<tr class="border-t border-slate-100 ${x.channel === 'App' ? 'bg-green-50/60' : ''}">
+            <tbody>${list.map(x => `<tr class="border-t border-slate-100 ${x.sample ? '' : x.channel === 'App' ? 'bg-green-50/60' : 'bg-amber-50/70'}">
                 <td class="p-3 font-black text-brand-blue">${x.seat}</td>
                 <td class="p-3 font-bold text-slate-800 whitespace-nowrap" data-notr>${esc(x.name)}</td>
                 <td class="p-3 font-mono text-xs whitespace-nowrap">${x.ref}</td>
@@ -1248,7 +1295,14 @@ function renderManifest() {
                 <td class="p-3 whitespace-nowrap">${x.channel}</td>
                 <td class="p-3">${x.boarded ? '<i class="fa-solid fa-circle-check text-green-600"></i> Yes' : '<span class="text-slate-400">Not yet</span>'}</td></tr>`).join('')}</tbody>
         </table></div>
-        <p class="px-5 py-3 text-xs text-slate-500 border-t border-slate-100">Green rows are bookings made in this app on this device. The other names are generated samples that stand in for counter and online sales.</p>`;
+        <form class="px-5 py-4 border-t border-slate-200 bg-slate-50 grid grid-cols-2 md:grid-cols-12 gap-3 items-end" onsubmit="event.preventDefault(); opsSell();">
+            <div class="col-span-2 md:col-span-12 font-black text-slate-800 text-sm"><i class="fa-solid fa-cash-register text-brand-blue mr-2"></i>Sell a seat at the counter</div>
+            <div class="col-span-2 md:col-span-5"><label for="ctName" class="lbl">Passenger name</label><input id="ctName" required minlength="2" maxlength="60" class="inp !bg-white !py-2.5"></div>
+            <div class="md:col-span-3"><label for="ctType" class="lbl">Fare type</label><select id="ctType" class="inp !bg-white !py-2.5">${Object.entries(FARE_TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+            <div class="md:col-span-2"><label for="ctSeat" class="lbl">Seat</label><select id="ctSeat" class="inp !bg-white !py-2.5" ${free.length ? '' : 'disabled'}>${free.map(x => `<option>${x}</option>`).join('')}</select></div>
+            <div class="col-span-2 md:col-span-2"><button class="btn-blue w-full py-2.5 text-sm" ${free.length ? '' : 'disabled'}>${free.length ? 'Sell (cash)' : 'Bus is full'}</button></div>
+        </form>
+        <p class="px-5 py-3 text-xs text-slate-500 border-t border-slate-100">Green rows were booked in this app, amber rows were sold at this counter. Both take the seat off the passenger seat map at once. The other names are generated samples.</p>`;
 }
 
 /* ---------------------------------------------------------- ticket scanner */
@@ -1284,6 +1338,14 @@ function scanCheck() {
         if (parts[0] !== QR_PREFIX || qrSig(base) !== sig.toUpperCase()) { scanShow('bad', 'Not a valid ticket', '<p>The security signature on this code does not match its contents, so it was edited or made up. Do not board. Send the passenger to the counter.</p>'); return; }
         ref = parts[1]; signed = true;
     }
+    const ct = DB.counter.find(x => x.ref === ref);
+    if (ct) {
+        const line = `<p class="font-bold text-slate-800" data-notr>${esc(ct.name)} · Seat ${ct.seat}</p><p>Counter ticket <span class="font-mono">${ct.ref}</span> · bus ${ct.tripId} · ${fmtDate(ct.date)}</p>`;
+        if (ct.date !== ($('scanDate').value || todayLocal())) scanShow('warn', 'Valid ticket, wrong date', line);
+        else if (ct.boarded) scanShow('warn', 'Already boarded', line);
+        else scanShow('ok', 'Valid ticket', `${line}<button onclick="scanBoardCounter('${ct.ref}')" class="btn-blue w-full py-3.5 mt-2">Board 1 passenger</button>`);
+        return;
+    }
     const b = DB.bookings.find(x => x.ref === ref);
     if (!b) { scanShow('bad', 'Booking not found', `<p>No booking <span class="font-mono font-bold">${esc(ref)}</span> on this device. In production this looks up the central booking system.</p>`); return; }
     if (b.status === 'cancelled') { scanShow('bad', 'Cancelled booking', `<p><span class="font-mono font-bold">${b.ref}</span> was cancelled and refunded. Do not board.</p>`); return; }
@@ -1304,6 +1366,350 @@ function scanBoard(ref, i) {
     b.legs[i].boarded = Date.now(); save();
     toast(`${b.pax.length} boarded on bus ${b.legs[i].tripId}`);
     scanCheck();
+}
+
+/* ------------------------------------------ operator: sales, counter, fares */
+
+// Everyone on a bus: bookings from this app, seats sold at this counter, and generated samples for the rest.
+function manifestList(tr, date) {
+    const mine = {};
+    DB.bookings.forEach(b => {
+        if (b.status === 'cancelled') return;
+        b.legs.forEach((l, i) => {
+            if (l.tripId !== tr.id || l.date !== date) return;
+            l.seats.forEach(seat => { const p = b.pax.find(x => x.seats && x.seats[i] === seat) || b.pax[0]; mine[seat] = { name: p.name, ref: b.ref, channel: 'App', type: p.type, boarded: !!l.boarded }; });
+        });
+    });
+    DB.counter.forEach(c => { if (c.tripId === tr.id && c.date === date) mine[c.seat] = { name: c.name, ref: c.ref, channel: 'Counter', type: c.type, boarded: !!c.boarded }; });
+    return [...occupied(tr.id, tr.kind, date)].sort().map(seat => Object.assign({ seat }, mine[seat] || genPassenger(tr.id, date, seat)));
+}
+
+const SALES_CHANNELS = [
+    { key: 'app', label: 'This app', color: '#2a78d6' },
+    { key: 'counter', label: 'This counter', color: '#eb6834' },
+    { key: 'online', label: 'Online (sample)', color: '#1baf7a' },
+    { key: 'walkin', label: 'Counter (sample)', color: '#eda100' }
+];
+function opsSales(rows) {
+    const byRoute = {}, byCh = { app: 0, counter: 0, online: 0, walkin: 0 };
+    let total = 0;
+    rows.forEach(r => {
+        const place = r.tr.dir === 'out' ? short(r.tr.to) : short(r.tr.from);
+        manifestList(r.tr, r.date).forEach(x => {
+            const amt = Math.round(r.tr.fare * (x.type !== 'regular' ? 1 - DISCOUNT : 1));
+            byRoute[place] = (byRoute[place] || 0) + amt;
+            byCh[x.sample ? (x.channel === 'Counter' ? 'walkin' : 'online') : (x.channel === 'App' ? 'app' : 'counter')] += amt;
+            total += amt;
+        });
+    });
+    return { byRoute, byCh, total };
+}
+
+function renderSalesChart(sales) {
+    const peso = (n) => formatPHP(n).replace('.00', '');
+    const max = Math.max(1, ...Object.values(sales.byRoute));
+    const routes = Object.entries(sales.byRoute).map(([place, amt]) => `
+        <div class="flex items-center gap-3 text-sm" title="${place}: ${peso(amt)}">
+            <div class="w-28 shrink-0 text-slate-600 truncate">${esc(place)}</div>
+            <div class="flex-1 h-4"><div class="h-full rounded-r" style="width:${Math.max(1, amt / max * 100)}%;background:#2a78d6"></div></div>
+            <div class="w-20 text-right font-bold text-slate-800 tabular-nums">${peso(amt)}</div>
+        </div>`).join('');
+    const chans = SALES_CHANNELS.filter(c => sales.byCh[c.key] > 0);
+    const stack = chans.map(c => `<div title="${c.label}: ${peso(sales.byCh[c.key])}" style="width:${sales.byCh[c.key] / sales.total * 100}%;background:${c.color}" class="h-full"></div>`).join('<div class="w-0.5 bg-white shrink-0"></div>');
+    const legend = SALES_CHANNELS.map(c => `
+        <div class="flex items-center gap-2 text-sm">
+            <span class="w-3 h-3 rounded-sm shrink-0" style="background:${c.color}"></span>
+            <span class="flex-1 text-slate-600">${c.label}</span>
+            <span class="font-bold text-slate-800 tabular-nums">${peso(sales.byCh[c.key])}</span>
+            <span class="w-10 text-right text-xs text-slate-500 tabular-nums">${sales.total ? Math.round(sales.byCh[c.key] / sales.total * 100) : 0}%</span>
+        </div>`).join('');
+    $('opsSales').innerHTML = `
+        <div class="grid md:grid-cols-2 gap-6">
+            <div><h3 class="font-black text-slate-800 mb-3">Fare revenue by route</h3><div class="space-y-2">${routes}</div></div>
+            <div><h3 class="font-black text-slate-800 mb-3">Where the seats were sold</h3>
+                <div class="h-5 flex rounded overflow-hidden mb-3">${stack}</div>
+                <div class="space-y-1.5">${legend}</div></div>
+        </div>`;
+}
+
+function opsSell() {
+    const r = opsTrips().find(x => x.tr.id === S.manifest); if (!r) return;
+    const seat = $('ctSeat').value, type = $('ctType').value, name = $('ctName').value.trim().toUpperCase();
+    if (!seat || occupied(r.tr.id, r.tr.kind, r.date).has(seat)) { toast('That seat was just taken. Pick another.', 'error'); renderOps(); return; }
+    const fare = Math.round(r.tr.fare * (type !== 'regular' ? 1 - DISCOUNT : 1)) + TERMINAL_FEE;
+    const ref = 'CT-' + Math.floor(Math.random() * 90000 + 10000);
+    DB.counter.unshift({ ref, tripId: r.tr.id, date: r.date, kind: r.tr.kind, seat, name, type, fare, ts: Date.now() });
+    save(); renderOps();
+    toast(`Sold seat ${seat} on bus ${r.tr.id} for ${formatPHP(fare)} cash. Ticket ${ref}.`);
+}
+function scanBoardCounter(ref) {
+    const c = DB.counter.find(x => x.ref === ref); if (!c) return;
+    c.boarded = Date.now(); save();
+    toast(`1 boarded on bus ${c.tripId}`);
+    scanCheck();
+}
+
+function renderOpsAdmin() {
+    if (document.activeElement && $('opsAdmin').contains(document.activeElement)) return;   // do not wipe a field being typed in
+    $('opsAdmin').innerHTML = `
+        <form class="card p-5" onsubmit="event.preventDefault(); opsSaveFares();">
+            <h3 class="font-black text-slate-800 mb-1"><i class="fa-solid fa-tags text-brand-blue mr-2"></i>Fares</h3>
+            <p class="text-xs text-slate-500 mb-4">Per passenger, from Manila. Saved fares show in the passenger app at once.</p>
+            <div class="space-y-2">
+                <div class="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><div class="col-span-6">Route</div><div class="col-span-3">First Class</div><div class="col-span-3">Standard</div></div>
+                ${Object.entries(ROUTES).map(([d, r]) => `<div class="grid grid-cols-12 gap-2 items-center">
+                    <label class="col-span-6 text-sm font-bold text-slate-700" for="fare_${r.no}_fc">${esc(short(d))}</label>
+                    <input id="fare_${r.no}_fc" type="number" min="100" max="5000" step="10" required value="${r.fc}" aria-label="${esc(short(d))} First Class fare" class="col-span-3 inp !bg-white !py-2 !px-2 tabular-nums">
+                    <input id="fare_${r.no}_std" type="number" min="100" max="5000" step="10" required value="${r.std}" aria-label="${esc(short(d))} Standard fare" class="col-span-3 inp !bg-white !py-2 !px-2 tabular-nums">
+                </div>`).join('')}
+            </div>
+            <div class="flex gap-3 mt-4"><button class="btn-blue px-5 py-2.5 text-sm flex-1">Save fares</button><button type="button" onclick="opsResetFares()" class="btn-ghost px-5 py-2.5 text-sm">Reset</button></div>
+        </form>
+        <form class="card p-5" onsubmit="event.preventDefault(); opsPostAdvisory();">
+            <h3 class="font-black text-slate-800 mb-1"><i class="fa-solid fa-bullhorn text-brand-blue mr-2"></i>Travel advisory</h3>
+            <p class="text-xs text-slate-500 mb-4">Shown as the banner on the booking page and in Help, and sent to the alerts bell.</p>
+            <label for="advInput" class="lbl">Message</label>
+            <textarea id="advInput" rows="3" maxlength="160" required class="inp !bg-white" placeholder="e.g. Trips to Daet after 9 PM are cancelled tonight because of flooding in Labo.">${DB.advisory ? esc(DB.advisory.text) : ''}</textarea>
+            <div class="flex gap-3 mt-4"><button class="btn-blue px-5 py-2.5 text-sm flex-1">Post advisory</button><button type="button" onclick="opsClearAdvisory()" class="btn-ghost px-5 py-2.5 text-sm">Back to default</button></div>
+        </form>`;
+}
+function opsSaveFares() {
+    const f = {};
+    Object.entries(ROUTES).forEach(([d, r]) => { f[d] = { fc: parseInt($(`fare_${r.no}_fc`).value), std: parseInt($(`fare_${r.no}_std`).value) }; });
+    DB.fares = f; applyFares(); save();
+    if (document.activeElement) document.activeElement.blur();
+    renderOps(); renderFeatured();
+    toast('Fares saved. The passenger app now shows the new prices.');
+}
+function opsResetFares() { DB.fares = null; applyFares(); save(); if (document.activeElement) document.activeElement.blur(); renderOps(); renderFeatured(); toast('Fares are back to the defaults.'); }
+function opsPostAdvisory() {
+    const text = $('advInput').value.trim(); if (!text) return;
+    DB.advisory = { text, ts: Date.now() }; save();
+    renderAdvisory();
+    notify('Travel advisory', text, 'adv-' + DB.advisory.ts, true);
+    toast('Advisory posted to the booking page, Help and the alerts bell.');
+}
+function opsClearAdvisory() { DB.advisory = null; save(); if (document.activeElement) document.activeElement.blur(); renderAdvisory(); renderOpsAdmin(); toast('The default advisory is showing again.'); }
+
+/* ----------------------------------------------------------- camera scanner */
+
+let scanStream = null;
+const decodeQR = (img) => { const r = window.jsQR ? window.jsQR(img.data, img.width, img.height) : null; return r && r.data ? r.data : null; };
+async function scanCamera() {
+    if (scanStream) { stopCamera(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.jsQR) { toast('The camera is not available in this browser. Paste the code or pick a booking below.', 'error'); return; }
+    try { scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); }
+    catch (e) { scanStream = null; toast('The camera was not allowed. Paste the code or pick a booking below.', 'error'); return; }
+    const v = $('scanVideo');
+    v.srcObject = scanStream; v.classList.remove('hidden');
+    $('scanCamLbl').textContent = 'Stop camera';
+    try { await v.play(); } catch (e) { /* autoplay refused: the stream still shows once tapped */ }
+    const c = document.createElement('canvas'), ctx = c.getContext('2d', { willReadFrequently: true });
+    const loop = () => {
+        if (!scanStream) return;
+        if (v.readyState >= 2 && v.videoWidth) {
+            c.width = v.videoWidth; c.height = v.videoHeight;
+            ctx.drawImage(v, 0, 0);
+            const code = decodeQR(ctx.getImageData(0, 0, c.width, c.height));
+            if (code) { $('scanInput').value = code; stopCamera(); scanCheck(); return; }
+        }
+        requestAnimationFrame(loop);
+    };
+    loop();
+}
+function stopCamera() {
+    if (scanStream) scanStream.getTracks().forEach(x => x.stop());
+    scanStream = null;
+    const v = $('scanVideo'); if (v) { v.srcObject = null; v.classList.add('hidden'); }
+    if ($('scanCamLbl')) $('scanCamLbl').textContent = 'Scan with camera';
+}
+
+/* ------------------------------------------------------- saved passengers */
+
+function renderSaved() {
+    const box = $('savedPax'), on = !!DB.profile && DB.saved.length > 0;
+    box.classList.toggle('hidden', !on);
+    if (on) box.innerHTML = `<div class="lbl">Saved passengers</div><div class="flex flex-wrap gap-2">${DB.saved.map((x, i) => `<button type="button" onclick="useSaved(${i})" class="bg-slate-100 hover:bg-blue-50 rounded-full px-3 py-1.5 text-xs font-bold text-slate-700"><i class="fa-solid fa-plus text-[10px] text-brand-blue mr-1"></i><span data-notr>${esc(x.name)}</span></button>`).join('')}</div>`;
+}
+function useSaved(i) {
+    const x = DB.saved[i]; if (!x) return;
+    for (let n = 0; n < S.search.pax; n++) {
+        if ($('paxName' + n).value.trim().toUpperCase() === x.name) { toast('That passenger is already on this booking.'); return; }
+    }
+    for (let n = 0; n < S.search.pax; n++) {
+        if (!$('paxName' + n).value.trim()) { $('paxName' + n).value = x.name; $('paxType' + n).value = x.type; renderSummary(); return; }
+    }
+    toast('Every passenger already has a name. Clear one to swap.');
+}
+function removeSaved(i) { DB.saved.splice(i, 1); save(); renderAccount(); }
+
+/* ------------------------------------------------------------ sample data */
+
+// One tap fills the app with a realistic state: an upcoming trip, a past one, a parcel and alerts.
+function loadSample(quiet) {
+    if (DB.bookings.some(b => b.demo)) { if (!quiet) toast('The sample trip is already loaded.'); return DB.bookings.find(b => b.demo && isUpcoming(b)) || DB.bookings.find(b => b.demo); }
+    const now = Date.now(), today = todayLocal(), dest = 'Daet, Camarines Norte';
+    let pick = null;   // the next departure at least 5 hours away, so rebooking, cancelling and the scanner all work
+    for (let d = 0; d < 3 && !pick; d++) {
+        const date = addDays(today, d);
+        const tr = tripsFor('PITX, Manila', dest, 'out').find(x => depDate(date, x.dep).getTime() - now > 5 * 3600000 && BUS[x.kind].total - occupied(x.id, x.kind, date).size >= 2);
+        if (tr) pick = { tr, date };
+    }
+    if (!pick) return null;
+    const mk = (tr, date, seats, extra) => Object.assign({ dir: tr.dir, tripId: tr.id, kind: tr.kind, busClass: tr.className, from: tr.from, to: tr.to, date, dep: tr.dep, arr: tr.arr, plus: tr.plus, durMin: tr.durMin, seats, door: 0, fare: tr.fare }, extra || {});
+    const occ = occupied(pick.tr.id, pick.tr.kind, pick.date), free = Array.from({ length: BUS[pick.tr.kind].total }, (_, i) => pad(i + 1)).filter(x => !occ.has(x) && x !== '02' && x !== '03' && x !== '04').slice(0, 2);
+    const ref = () => 'SL-' + Math.floor(Math.random() * 90000 + 10000) + 'X';
+    const up = {
+        ref: ref(), demo: true, createdAt: now, status: 'confirmed', contact: { mobile: '09171234567', email: '' },
+        pax: [{ name: 'JUAN DELA CRUZ', type: 'regular', seats: [free[0]] }, { name: 'MARIA DELA CRUZ', type: 'senior', seats: [free[1]] }],
+        addons: { bagKg: 0, pet: false, ins: true }, legs: [mk(pick.tr, pick.date, free)], method: 'GCash',
+        total: Math.round(pick.tr.fare * 2 - pick.tr.fare * DISCOUNT) + TERMINAL_FEE + INS_FEE * 2, pointsEarned: 0, pointsUsed: 0, auth: '09:41:07'
+    };
+    const oldTr = tripsFor('PITX, Manila', 'Naga, Camarines Sur', 'ret')[1], oldDate = addDays(today, -9);
+    const done = {
+        ref: ref(), demo: true, createdAt: now - 12 * 86400000, status: 'confirmed', contact: { mobile: '09171234567', email: '' },
+        pax: [{ name: 'JUAN DELA CRUZ', type: 'regular', seats: ['07'] }], addons: { bagKg: 0, pet: false, ins: false },
+        legs: [mk(oldTr, oldDate, ['07'], { boarded: depDate(oldDate, oldTr.dep).getTime() - 15 * 60000 })], method: 'Maya', total: oldTr.fare + TERMINAL_FEE, pointsEarned: 0, pointsUsed: 0, auth: '17:12:44'
+    };
+    DB.bookings.unshift(up, done);
+    DB.parcels.unshift({ ref: 'CG-' + Math.floor(Math.random() * 90000 + 10000), createdAt: now, demo: true, from: 'PITX Manila', to: 'Daet Hub', weight: 4, fee: 300, contents: 'documents', sender: 'JUAN DELA CRUZ', senderMobile: '09171234567', receiver: 'ANA REYES', receiverMobile: '09181112222' });
+    if (!DB.follow.includes('SL-902')) DB.follow.push('SL-902');
+    save();
+    notify('Booking confirmed', `${up.ref}: ${short(up.legs[0].from)} to ${short(up.legs[0].to)}, ${fmtDate(pick.date)} ${pick.tr.dep}.`, 'conf-' + up.ref, true);
+    checkReminders();
+    delayBus('SL-902', 15);
+    updateBell(); refreshView();
+    if (!quiet) toast('Sample trip loaded. Open My Trips, the bell, or the operator console.');
+    return up;
+}
+
+/* --------------------------------------------------------------- route map */
+
+// A schematic of the corridor, not a street map. x, y in a 800 x 290 drawing.
+const MAP_PTS = {
+    MNL: [48, 62, 'Manila'], TUR: [118, 122, 'Turbina'], LUC: [214, 168, 'Lucena'], ATI: [300, 150, 'Atimonan'], CAL: [384, 122, 'Calauag'], JCT: [456, 128, 'Tabugon'],
+    DAE: [540, 84, 'Daet'], JPA: [580, 36, 'J. Panganiban'], SIP: [552, 172, 'Sipocot'], NAG: [640, 200, 'Naga'], PIO: [738, 256, 'Pio Duran']
+};
+const MAP_TRUNK = ['MNL', 'TUR', 'LUC', 'ATI', 'CAL', 'JCT'];
+const MAP_PATH = {
+    'Daet, Camarines Norte': MAP_TRUNK.concat(['DAE']), 'Jose Panganiban': MAP_TRUNK.concat(['DAE', 'JPA']),
+    'Naga, Camarines Sur': MAP_TRUNK.concat(['SIP', 'NAG']), 'Pio Duran': MAP_TRUNK.concat(['SIP', 'NAG', 'PIO'])
+};
+function mapPoint(keys, p) {
+    const pts = keys.map(k => MAP_PTS[k]), seg = [];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); total += d; }
+    let left = Math.min(1, Math.max(0, p)) * total;
+    for (let i = 0; i < seg.length; i++) {
+        if (left <= seg[i] || i === seg.length - 1) { const f = seg[i] ? left / seg[i] : 0; return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f]; }
+        left -= seg[i];
+    }
+    return pts[0];
+}
+function busesOnRoad() {
+    const now = Date.now(), out = [];
+    Object.keys(ROUTES).forEach((dest, ri) => ['out', 'ret'].forEach(dir => tripsFor('PITX, Manila', dest, dir).forEach(tr => [0, -1].forEach(d => {
+        const live = FIDS.find(f => f.id === tr.id), late = live && live.status === 'DELAYED' ? 15 : 0;
+        const dep = depDate(addDays(todayLocal(), d), tr.dep).getTime() + late * 60000, p = (now - dep) / (tr.durMin * 60000);
+        if (p <= 0 || p >= 1) return;
+        const [x, y] = mapPoint(MAP_PATH[dest], dir === 'out' ? p : 1 - p);
+        out.push({ tr, dest, late, x, y: y + (ri - 1.5) * 7, eta: fmtTime(parseTime(tr.arr) + late) });
+    }))));
+    return out;
+}
+function renderMap() {
+    const box = $('routeMap'); if (!box) return;
+    const buses = busesOnRoad(), segs = new Set();
+    Object.values(MAP_PATH).forEach(k => { for (let i = 1; i < k.length; i++) segs.add(k[i - 1] + '-' + k[i]); });
+    const lines = [...segs].map(s => { const [a, b] = s.split('-').map(k => MAP_PTS[k]); return `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#475569" stroke-width="4" stroke-linecap="round"/>`; }).join('');
+    const ends = ['MNL', 'DAE', 'JPA', 'NAG', 'PIO'];
+    const stops = Object.entries(MAP_PTS).map(([k, p]) => `<circle cx="${p[0]}" cy="${p[1]}" r="${ends.includes(k) ? 6 : 4}" fill="#0f172a" stroke="${ends.includes(k) ? '#e2e8f0' : '#64748b'}" stroke-width="2"/>
+        <text x="${p[0]}" y="${p[1] + (['DAE', 'JPA', 'CAL', 'ATI'].includes(k) ? -12 : 20)}" text-anchor="middle" font-size="${ends.includes(k) ? 13 : 11}" font-weight="${ends.includes(k) ? 700 : 500}" fill="${ends.includes(k) ? '#e2e8f0' : '#94a3b8'}">${p[2]}</text>`).join('');
+    const marks = buses.map(b => {
+        const sel = S.mapBus === b.tr.id;
+        const shape = b.late
+            ? `<rect x="${b.x - 6}" y="${b.y - 6}" width="12" height="12" transform="rotate(45 ${b.x} ${b.y})" fill="#f59e0b" stroke="#0f172a" stroke-width="2"/>`
+            : `<circle cx="${b.x}" cy="${b.y}" r="6.5" fill="#d4af37" stroke="#0f172a" stroke-width="2"/>`;
+        return `<g role="button" tabindex="0" aria-label="Bus ${b.tr.id}, ${short(b.tr.from)} to ${short(b.tr.to)}${b.late ? ', delayed' : ''}" style="cursor:pointer" onclick="mapPick('${b.tr.id}')" onkeydown="if(event.key==='Enter')mapPick('${b.tr.id}')">
+            <title>${b.tr.id} · ${short(b.tr.from)} to ${short(b.tr.to)} · arrives ${b.eta}${b.late ? ' · delayed' : ''}</title>
+            <circle cx="${b.x}" cy="${b.y}" r="16" fill="transparent"/>${sel ? `<circle cx="${b.x}" cy="${b.y}" r="12" fill="none" stroke="#ffffff" stroke-width="2"/>` : ''}${shape}</g>`;
+    }).join('');
+    box.innerHTML = `<svg viewBox="0 0 800 290" class="w-full h-auto" role="img" aria-label="Route map from Manila to Bicol with buses now on the road">${lines}${stops}${marks}</svg>`;
+    $('mapCount').textContent = buses.length ? `${buses.length} bus${buses.length === 1 ? '' : 'es'} on the road` : 'No buses on the road right now';
+    const b = buses.find(x => x.tr.id === S.mapBus);
+    $('mapInfo').innerHTML = b
+        ? `<div class="flex items-center justify-between gap-3"><div><div class="font-mono font-bold text-accent-gold">${b.tr.id}</div><div class="font-bold">${esc(short(b.tr.from))} ➔ ${esc(short(b.tr.to))}</div><div class="text-sm text-slate-400">${b.tr.className} · arrives ${b.eta} · ${b.late ? 'Running 15 minutes late' : 'On schedule'}</div></div>
+            <button onclick="toggleFollow('${b.tr.id}')" class="btn-ghost px-4 py-2 text-xs whitespace-nowrap">${DB.follow.includes(b.tr.id) ? 'Stop alerts' : 'Alert me'}</button></div>`
+        : '<div class="text-sm text-slate-400"><span class="inline-block w-3 h-3 rounded-full bg-accent-gold align-middle mr-1"></span> On schedule <span class="inline-block w-2.5 h-2.5 rotate-45 bg-amber-500 align-middle ml-4 mr-1.5"></span> Delayed · Tap a bus for its arrival time.</div>';
+}
+function mapPick(id) { S.mapBus = S.mapBus === id ? null : id; renderMap(); }
+
+/* ------------------------------------------------------------- guided tour */
+
+const pause = (ms) => new Promise(r => setTimeout(r, ms));
+async function tourSearch() {
+    S.search = { origin: 'PITX, Manila', dest: 'Daet, Camarines Norte', date: addDays(todayLocal(), 1), ret: '', pax: 1, round: false, rev: false };
+    S.legs = []; S.leg = 0; S.filter = 'all';
+    navigateTo('view-results');
+}
+async function tourSeats() {
+    await tourSearch();
+    const tr = S.trips.find(x => BUS[x.kind].total - occupied(x.id, x.kind, S.search.date).size >= 1);
+    openSeatSelection(tr.id);
+    await pause(350);
+}
+async function tourCheckout() {
+    await tourSeats();
+    [...document.querySelectorAll('#seatGrid button')].find(b => !b.disabled).click();
+    confirmSeats();
+    await pause(750);
+}
+async function tourTicket() { const b = loadSample(true); if (b) viewTicket(b.ref); }
+async function tourScan() {
+    const b = loadSample(true); if (!b) return;
+    navigateTo('view-scan');
+    $('scanDate').value = b.legs[0].date;
+    $('scanInput').value = qrPayload(b);
+    scanCheck();
+}
+const TOUR = [
+    { view: 'view-home', sel: '#searchForm', title: 'Search a trip', text: 'Choose where you board and where you are going. The switch under the two fields reverses the direction, and Round Trip adds a return date.' },
+    { prep: tourSearch, sel: '#resultsList', title: 'Choose a bus', text: 'Each departure shows the class, the fare and the seats left. Booking closes 30 minutes before the bus leaves.' },
+    { prep: tourSeats, sel: '#seatGrid', keepModal: true, title: 'Pick the exact seat', text: 'Grey seats are taken. Gold seats by the door have extra legroom for ₱50 more.' },
+    { prep: tourCheckout, sel: '#paxRows', title: 'Passengers, discounts and add-ons', text: 'Every passenger gets a name, a fare type and a seat. Senior, PWD and student fares take 20% off. Extra baggage, a pet and insurance are just below.' },
+    { prep: tourTicket, sel: '#printableTicket', title: 'The e-ticket', text: 'A paid ticket carries a signed QR code and stays on the phone, even without a signal.' },
+    { view: 'view-trips', sel: '#tripsList', title: 'My Trips', text: 'Rebook to another date, cancel for a refund, add the trip to a calendar or share it.' },
+    { view: 'view-track', sel: '#routeMap', title: 'Live bus tracking', text: 'Buses on the road right now. Tap one for its arrival time, and tap the bell to be alerted if it runs late.' },
+    { view: 'view-ops', sel: '#opsKpis', title: 'The operator console', text: 'What your staff see: every departure, seats sold, revenue, the passenger manifest, counter sales, fares and advisories.' },
+    { prep: tourScan, sel: '#scanResult', title: 'Boarding at the gate', text: 'Staff scan the QR code. A valid ticket boards in one tap, and an edited or reused one is refused.' },
+    { view: 'view-home', sel: '[data-lang-toggle]', title: 'That is the tour', text: 'Everything you saw runs on sample data. The language switch at the top changes the whole app to Filipino.' }
+];
+function tourClear() { document.querySelectorAll('.tour-ring').forEach(el => el.classList.remove('tour-ring')); }
+async function tourGo(i) {
+    if (i < 0) i = 0;
+    if (i >= TOUR.length) { tourEnd(); return; }
+    tourClear();
+    S.tour = i;
+    const st = TOUR[i];
+    $('mobileMenu').classList.add('hidden');
+    if (!st.keepModal) openModals().forEach(m => closeModal(m.id));
+    $('tourCard').classList.remove('hidden');
+    $('tourStep').textContent = `${i + 1} of ${TOUR.length}`;
+    $('tourTitle').textContent = st.title; $('tourText').textContent = st.text;
+    $('tourBack').disabled = i === 0;
+    $('tourNext').textContent = i === TOUR.length - 1 ? 'Finish' : 'Next';
+    if (st.prep) await st.prep(); else navigateTo(st.view);
+    await pause(200);
+    if (S.tour !== i) return;   // the visitor already moved on
+    const el = [...document.querySelectorAll(st.sel)].find(x => x.offsetParent !== null);
+    if (el) { el.classList.add('tour-ring'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+}
+function tourEnd() {
+    tourClear();
+    S.tour = null;
+    $('tourCard').classList.add('hidden');
+    openModals().forEach(m => closeModal(m.id));
+    navigateTo('view-home');
 }
 
 /* ------------------------------------------------------------ help, account */
@@ -1344,7 +1750,8 @@ function renderAccount() {
             </div>
             <div><label for="accMobile" class="lbl">Mobile</label><input id="accMobile" class="inp opacity-70" value="${esc(p.mobile)}" readonly></div>
             <div class="flex gap-3"><button class="btn-blue px-6 py-3 flex-1">${t('Save')}</button><button type="button" onclick="signOut()" class="btn-ghost px-6 py-3 flex-1">${t('Sign Out')}</button></div>
-        </form>` : `
+        </form>
+        ${DB.saved.length ? `<div class="card p-5"><h3 class="font-black text-slate-800 mb-3">Saved passengers</h3><div class="flex flex-wrap gap-2">${DB.saved.map((x, i) => `<span class="inline-flex items-center gap-2 bg-slate-100 rounded-full pl-3 pr-1 py-1 text-sm font-bold text-slate-700"><span data-notr>${esc(x.name)}</span>${FARE_SHORT[x.type] ? `<span class="text-[10px] text-green-700">${FARE_SHORT[x.type]}</span>` : ''}<button onclick="removeSaved(${i})" aria-label="Remove saved passenger" class="w-6 h-6 rounded-full hover:bg-slate-200 text-slate-500"><i class="fa-solid fa-xmark text-xs"></i></button></span>`).join('')}</div></div>` : ''}` : `
         <div class="card p-6 text-center">
             <div class="w-16 h-16 rounded-full bg-blue-50 text-brand-blue flex items-center justify-center text-2xl mx-auto mb-4"><i class="fa-regular fa-user"></i></div>
             <h3 class="font-black text-slate-800 text-lg mb-1">Sign in with your mobile number</h3>
@@ -1355,6 +1762,8 @@ function renderAccount() {
             <button onclick="navigateTo('view-trips')" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-ticket w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">${t('My Trips')}</span><span class="text-xs text-slate-400">${upcoming} upcoming</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
             <button onclick="navigateTo('view-cargo')" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-box w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">${t('Cargo & Parcels')}</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
             <button onclick="navigateTo('view-help')" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-circle-question w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">${t('Help & Travel Info')}</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
+            <button onclick="tourGo(0)" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-route w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">Take the guided tour</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
+            <button onclick="loadSample()" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-wand-magic-sparkles w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">Load a sample trip</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
             <button onclick="navigateTo('view-ops')" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-clipboard-list w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">Operator console</span><span class="text-xs text-slate-400">Staff demo</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
             <button onclick="toggleLang()" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-language w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">${t('Language')}</span><span class="text-xs font-black text-slate-500">${DB.lang === 'fil' ? 'Filipino' : 'English'}</span></button>
         </div>
@@ -1380,7 +1789,7 @@ function saveProfile() {
 function resetDemo() {
     openConfirm({
         title: 'Reset demo data?', body: '<p>This clears the bookings, parcels, points and sign-in saved on this device.</p>', okText: 'Reset', cancelText: 'Back',
-        onOk: () => { DB.bookings = []; DB.parcels = []; DB.profile = null; DB.points = 0; DB.notes = []; DB.follow = []; S.ticket = null; updateBell(); save(); updateAuthUI(); renderAccount(); toast('Demo data cleared'); }
+        onOk: () => { DB.bookings = []; DB.parcels = []; DB.profile = null; DB.points = 0; DB.notes = []; DB.follow = []; DB.counter = []; DB.saved = []; DB.fares = null; DB.advisory = null; applyFares(); S.ticket = null; updateBell(); save(); updateAuthUI(); renderAccount(); toast('Demo data cleared'); }
     });
 }
 async function installApp() {
@@ -1390,7 +1799,16 @@ async function installApp() {
     installEvt = null; renderAccount();
 }
 function wireSocial() { document.querySelectorAll('[data-social]').forEach(a => { a.href = SOCIAL[a.dataset.social]; }); }
-function dismissAdvisory() { $('advisory').classList.add('hidden'); try { sessionStorage.setItem('sl_adv', '1'); } catch (e) { /* ignore */ } }
+const ADVISORY_DEFAULT = 'Road works along Andaya Highway (Quezon) may add 30 to 45 minutes to night trips this week.';
+const advKey = () => 'a' + (DB.advisory ? DB.advisory.ts : 0);
+function renderAdvisory() {
+    const text = DB.advisory ? DB.advisory.text : ADVISORY_DEFAULT;
+    $('advText').textContent = text; $('advFirst').textContent = text;
+    let seen = false; try { seen = sessionStorage.getItem('sl_adv') === advKey(); } catch (e) { /* ignore */ }
+    $('advisory').classList.toggle('hidden', seen);
+}
+function dismissAdvisory() { $('advisory').classList.add('hidden'); try { sessionStorage.setItem('sl_adv', advKey()); } catch (e) { /* ignore */ } }
+function renderFeatured() { document.querySelectorAll('[data-feat]').forEach(el => { const [d, k] = el.dataset.feat.split('|'); el.textContent = formatPHP(ROUTES[d][k]); }); }
 
 /* -------------------------------------------------------------------- init */
 
@@ -1443,8 +1861,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const termOpts = TERMINALS.map(x => `<option>${x.name}</option>`).join('');
     $('cgFrom').innerHTML = termOpts; $('cgTo').innerHTML = termOpts; $('cgTo').selectedIndex = 3;
 
-    let advSeen = false; try { advSeen = sessionStorage.getItem('sl_adv') === '1'; } catch (e) { /* ignore */ }
-    $('advisory').classList.toggle('hidden', advSeen);
+    renderAdvisory(); renderFeatured();
+    setInterval(() => { if (currentView === 'view-track') renderMap(); }, 30000);
 
     renderHelp();
     wireSocial();

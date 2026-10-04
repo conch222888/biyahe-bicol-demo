@@ -260,3 +260,37 @@ const FIL_RX = [
     [new RegExp('^' + PLACE + ' to ' + PLACE + ', bus (.+), leaves at (.+)\\. Be at ' + PLACE + ' 30 minutes early with your QR code and any discount IDs\\.$'), '$1 papuntang $2, bus $3, aalis nang $4. Dumating sa $5 nang 30 minuto bago umalis, dala ang QR code at mga ID para sa diskwento.'],
     [new RegExp('^' + PLACE + ' to ' + PLACE + ' on (.+) at (.+), bus (.+), seats (.+)\\.$'), '$1 papuntang $2 sa $3 nang $4, bus $5, upuan $6.']
 ];
+
+// tour, sample data, payment screens, route map, saved passengers
+Object.assign(FIL, {
+    'Take the 2-minute tour': 'Tingnan ang 2-minutong tour', 'Take the guided tour': 'Tingnan ang guided tour', 'Load a sample trip': 'Mag-load ng sample na biyahe',
+    'Saved passengers': 'Mga naka-save na pasahero', 'Remove saved passenger': 'Alisin ang naka-save na pasahero',
+    'Guided tour ·': 'Guided tour ·', 'Guided tour': 'Guided tour', 'End tour': 'Tapusin ang tour', 'Next': 'Susunod', 'Finish': 'Tapos',
+    'Search a trip': 'Maghanap ng biyahe', 'Choose where you board and where you are going. The switch under the two fields reverses the direction, and Round Trip adds a return date.': 'Piliin kung saan ka sasakay at saan ka pupunta. Binabaligtad ng switch sa ilalim ng dalawang field ang direksyon, at nagdadagdag ng petsa ng balik ang Balikan.',
+    'Choose a bus': 'Pumili ng bus', 'Each departure shows the class, the fare and the seats left. Booking closes 30 minutes before the bus leaves.': 'Makikita sa bawat biyahe ang klase, pamasahe at natitirang upuan. Nagsasara ang booking 30 minuto bago umalis ang bus.',
+    'Pick the exact seat': 'Piliin ang mismong upuan', 'Grey seats are taken. Gold seats by the door have extra legroom for ₱50 more.': 'May nakaupo na sa kulay-abong upuan. Mas maluwag ang gintong upuan malapit sa pinto, dagdag na ₱50.',
+    'Passengers, discounts and add-ons': 'Pasahero, diskwento at mga dagdag', 'Every passenger gets a name, a fare type and a seat. Senior, PWD and student fares take 20% off. Extra baggage, a pet and insurance are just below.': 'May pangalan, uri ng pamasahe at upuan ang bawat pasahero. 20% ang bawas sa senior, PWD at estudyante. Nasa ibaba ang dagdag na bagahe, alagang hayop at insurance.',
+    'The e-ticket': 'Ang e-ticket', 'A paid ticket carries a signed QR code and stays on the phone, even without a signal.': 'May pirmadong QR code ang bayad na ticket at nananatili ito sa phone kahit walang signal.',
+    'Rebook to another date, cancel for a refund, add the trip to a calendar or share it.': 'Mag-rebook sa ibang petsa, mag-cancel para sa refund, idagdag sa kalendaryo o ibahagi ang biyahe.',
+    'Live bus tracking': 'Live na pagsubaybay ng bus', 'Buses on the road right now. Tap one for its arrival time, and tap the bell to be alerted if it runs late.': 'Mga bus na nasa biyahe ngayon. Pindutin ang isa para sa oras ng dating, at pindutin ang kampana para maabisuhan kapag naantala.',
+    'The operator console': 'Ang operator console', 'What your staff see: every departure, seats sold, revenue, the passenger manifest, counter sales, fares and advisories.': 'Ang nakikita ng staff ninyo: bawat biyahe, nabentang upuan, kita, listahan ng pasahero, benta sa counter, pamasahe at mga abiso.',
+    'Boarding at the gate': 'Pagsakay sa gate', 'Staff scan the QR code. A valid ticket boards in one tap, and an edited or reused one is refused.': 'Ini-scan ng staff ang QR code. Isang pindot lang ang valid na ticket, at tinatanggihan ang binago o nagamit na.',
+    'That is the tour': 'Iyan ang tour', 'Everything you saw runs on sample data. The language switch at the top changes the whole app to Filipino.': 'Sample data ang lahat ng nakita mo. Ginagawang Filipino ang buong app ng language switch sa itaas.',
+    'Sample trip loaded. Open My Trips, the bell, or the operator console.': 'Na-load ang sample na biyahe. Buksan ang Mga Biyahe Ko, ang kampana, o ang operator console.', 'The sample trip is already loaded.': 'Naka-load na ang sample na biyahe.',
+    'That passenger is already on this booking.': 'Nasa booking na ito ang pasaherong iyan.', 'Every passenger already has a name. Clear one to swap.': 'May pangalan na ang bawat pasahero. Burahin ang isa para mapalitan.',
+    'Amount due': 'Babayaran', 'Wallet number': 'Numero ng wallet', 'You would approve this with your MPIN in the wallet app.': 'Aaprubahan mo ito gamit ang MPIN mo sa wallet app.',
+    'Scan with any bank or e-wallet app, then tap the button below.': 'I-scan gamit ang kahit anong bank o e-wallet app, tapos pindutin ang button sa ibaba.',
+    'Test card': 'Test card', 'No real card details are asked for in this demo.': 'Walang hinihinging totoong detalye ng card sa demo na ito.', 'I have paid': 'Nakabayad na ako',
+    'Simulate a failed payment': 'Subukan ang bigong bayad', 'Card payment': 'Bayad gamit ang card', 'Complete your payment': 'Tapusin ang bayad',
+    'Payment did not go through.': 'Hindi natuloy ang bayad.', 'Nothing was charged and your seats are still held. Try again or pick another payment method.': 'Walang nasingil at naka-hold pa ang mga upuan mo. Subukan ulit o pumili ng ibang paraan ng bayad.',
+    'Payment did not go through. Nothing was charged.': 'Hindi natuloy ang bayad. Walang nasingil.',
+    'On the road now': 'Nasa biyahe ngayon', 'No buses on the road right now': 'Walang bus na nasa biyahe ngayon', 'On schedule': 'Nasa oras', 'Delayed': 'Antala',
+    'Tap a bus for its arrival time.': 'Pindutin ang bus para sa oras ng dating.', 'Running 15 minutes late': 'Huli nang 15 minuto', 'Alert me': 'Abisuhan ako', 'Stop alerts': 'Ihinto ang abiso',
+    'Travel advisory': 'Abiso sa biyahe'
+});
+FIL_RX.push(
+    [/^Paying (.+)$/, 'Magbabayad sa $1'],
+    [/^Pay (₱[\d,.]+)$/, 'Magbayad ng $1'],
+    [/^(\d+) bus(?:es)? on the road$/, '$1 bus ang nasa biyahe'],
+    [/^arrives (.+)$/, 'darating nang $1']
+);

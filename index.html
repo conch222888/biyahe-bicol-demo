@@ -13,10 +13,11 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon-192.png">
-    <link href="tailwind.css" rel="stylesheet">
+    <link href="tailwind.css?v=4" rel="stylesheet">
     <link href="fa/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" defer></script>
 
 
         <style>
@@ -55,6 +56,7 @@
         details > summary::-webkit-details-marker { display: none; }
         details[open] > summary .chev { transform: rotate(180deg); }
         :focus-visible { outline: 3px solid #d4af37; outline-offset: 2px; }
+        .tour-ring { outline: 4px solid #d4af37 !important; outline-offset: 4px; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.18); }
         main:focus { outline: none; }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
@@ -129,7 +131,7 @@
             <div id="advisory" class="hidden bg-amber-50 border-b border-amber-200 text-amber-900 text-sm">
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-start gap-3">
                     <i class="fa-solid fa-triangle-exclamation mt-0.5 text-amber-500"></i>
-                    <p class="flex-1"><strong data-i18n>Travel advisory:</strong> <span data-i18n>Road works along Andaya Highway (Quezon) may add 30 to 45 minutes to night trips this week.</span> <a onclick="navigateTo('view-help')" class="underline font-bold cursor-pointer" data-i18n>Details</a></p>
+                    <p class="flex-1"><strong data-i18n>Travel advisory:</strong> <span id="advText">Road works along Andaya Highway (Quezon) may add 30 to 45 minutes to night trips this week.</span> <a onclick="navigateTo('view-help')" class="underline font-bold cursor-pointer" data-i18n>Details</a></p>
                     <button onclick="dismissAdvisory()" aria-label="Dismiss" class="text-amber-700 hover:text-amber-900 px-1"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
@@ -143,7 +145,8 @@
                         <div class="lg:col-span-7 text-white text-center lg:text-left">
                             <span class="inline-block py-1 px-3 rounded-full bg-white/10 border border-white/20 text-xs font-bold tracking-widest text-accent-gold mb-4 backdrop-blur-sm shadow-sm">PREMIUM 2+1 RECLINING COACHES</span>
                             <h1 class="text-3xl md:text-5xl lg:text-6xl font-black mb-4 leading-tight tracking-tight drop-shadow-lg" data-i18n>Your Journey to Bicol Starts Here.</h1>
-                            <p class="hidden sm:block text-lg md:text-xl text-slate-200 mb-8 max-w-xl mx-auto lg:mx-0 font-medium drop-shadow" data-i18n>Secure. Comfortable. Online. Book your provincial travel instantly and pay securely with GCash, Maya, or QR Ph.</p>
+                            <p class="hidden sm:block text-lg md:text-xl text-slate-200 mb-6 max-w-xl mx-auto lg:mx-0 font-medium drop-shadow" data-i18n>Secure. Comfortable. Online. Book your provincial travel instantly and pay securely with GCash, Maya, or QR Ph.</p>
+                            <button type="button" onclick="tourGo(0)" class="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold text-sm rounded-full px-5 py-2.5 backdrop-blur-sm"><i class="fa-solid fa-circle-play text-accent-gold"></i> Take the 2-minute tour</button>
                         </div>
 
                         <div class="lg:col-span-5 bg-white rounded-3xl shadow-2xl p-5 md:p-8 relative">
@@ -253,7 +256,7 @@
                         <div class="p-6 flex flex-col flex-1 justify-between">
                             <div><h3 class="text-2xl font-bold text-slate-800 mb-1">Manila to Daet</h3><p class="text-sm text-slate-500 mb-6">via Andaya Highway</p></div>
                             <div>
-                                <div class="flex flex-col mb-4"><span class="text-xs text-slate-400 font-medium" data-i18n>Starting at</span><div class="text-2xl font-black text-brand-red">₱850.00</div></div>
+                                <div class="flex flex-col mb-4"><span class="text-xs text-slate-400 font-medium" data-i18n>Starting at</span><div data-feat="Daet, Camarines Norte|std" class="text-2xl font-black text-brand-red">₱850.00</div></div>
                                 <button onclick="prefillSearch('PITX, Manila', 'Daet, Camarines Norte')" class="btn-blue w-full py-3.5" data-i18n>View Schedule</button>
                             </div>
                         </div>
@@ -267,7 +270,7 @@
                         <div class="p-6 flex flex-col flex-1 justify-between">
                             <div><h3 class="text-2xl font-bold text-slate-800 mb-1">Manila to Naga</h3><p class="text-sm text-slate-500 mb-6">Premium Lazyboy Recliners</p></div>
                             <div>
-                                <div class="flex flex-col mb-4"><span class="text-xs text-slate-400 font-medium" data-i18n>First Class from</span><div class="text-2xl font-black text-brand-red">₱1,250.00</div></div>
+                                <div class="flex flex-col mb-4"><span class="text-xs text-slate-400 font-medium" data-i18n>First Class from</span><div data-feat="Naga, Camarines Sur|fc" class="text-2xl font-black text-brand-red">₱1,250.00</div></div>
                                 <button onclick="prefillSearch('PITX, Manila', 'Naga, Camarines Sur')" class="btn-blue w-full py-3.5" data-i18n>View Schedule</button>
                             </div>
                         </div>
@@ -280,7 +283,7 @@
                         <div class="p-6 flex flex-col flex-1 justify-between">
                             <div><h3 class="text-2xl font-bold text-slate-800 mb-1">Manila to J. Panganiban</h3><p class="text-sm text-slate-500 mb-6">Direct Terminal Stop</p></div>
                             <div>
-                                <div class="flex flex-col mb-4"><span class="text-xs text-slate-400 font-medium" data-i18n>Starting at</span><div class="text-2xl font-black text-brand-red">₱950.00</div></div>
+                                <div class="flex flex-col mb-4"><span class="text-xs text-slate-400 font-medium" data-i18n>Starting at</span><div data-feat="Jose Panganiban|std" class="text-2xl font-black text-brand-red">₱950.00</div></div>
                                 <button onclick="prefillSearch('PITX, Manila', 'Jose Panganiban')" class="btn-blue w-full py-3.5" data-i18n>View Schedule</button>
                             </div>
                         </div>
@@ -430,6 +433,7 @@
                             <button type="button" id="chkLoginBtn" onclick="openModal('authModal')" class="text-sm text-brand-blue font-bold hover:underline" data-i18n>Log In to Autofill</button>
                         </div>
                         <form id="checkoutForm" onsubmit="event.preventDefault(); processPayment();">
+                            <div id="savedPax" class="hidden mb-5"></div>
                             <div id="paxRows" class="space-y-4 mb-5"></div>
                             <p class="text-xs text-slate-500 mb-6"><i class="fa-solid fa-circle-info text-slate-400 mr-1"></i><span data-i18n>Senior citizens, PWDs and students get 20% off the fare. Bring the valid ID for each discounted passenger; it is checked at boarding.</span></p>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
@@ -540,6 +544,7 @@
                             <p class="text-[11px] text-slate-500 mt-2 h-4" id="chkEarn"></p>
                         </div>
                         <div class="p-5 bg-slate-50">
+                            <div id="payError" role="alert" class="hidden bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 mb-3 text-sm"><i class="fa-solid fa-circle-exclamation mr-1"></i> <strong>Payment did not go through.</strong> Nothing was charged and your seats are still held. Try again or pick another payment method.</div>
                             <button type="submit" form="checkoutForm" id="payBtn" class="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-black text-lg rounded-xl transition-all shadow-lg flex items-center justify-center gap-2">
                                 <i class="fa-solid fa-lock text-sm"></i> <span data-i18n>Pay Securely</span>
                             </button>
@@ -660,6 +665,11 @@
                             </div>
                         </div>
                     </div>
+                    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 md:p-5 mb-6">
+                        <div class="flex items-center justify-between gap-3 mb-2"><h3 class="font-black">On the road now</h3><span class="text-xs font-bold text-slate-400" id="mapCount"></span></div>
+                        <div id="routeMap"></div>
+                        <div id="mapInfo" class="mt-3 pt-3 border-t border-slate-700"></div>
+                    </div>
                     <!-- phone: cards; desktop: table -->
                     <div id="fidsCards" class="md:hidden space-y-3"></div>
                     <div class="hidden md:block bg-slate-800 rounded-2xl shadow-2xl overflow-hidden border border-slate-700">
@@ -734,7 +744,7 @@
             <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-8">
                 <h3 class="font-bold text-amber-900 mb-2"><i class="fa-solid fa-triangle-exclamation text-amber-500 mr-2"></i><span data-i18n>Travel advisories</span></h3>
                 <ul class="text-sm text-amber-900 space-y-1.5 list-disc pl-5">
-                    <li>Road works along Andaya Highway (Quezon) may add 30 to 45 minutes to night trips this week.</li>
+                    <li id="advFirst">Road works along Andaya Highway (Quezon) may add 30 to 45 minutes to night trips this week.</li>
                     <li>During typhoon signals, trips can be held at the terminal. Check Live Status before leaving home.</li>
                     <li>Peak dates (Undas, Christmas, Holy Week) sell out early. Book at least a week ahead.</li>
                 </ul>
@@ -805,7 +815,9 @@
                     </table>
                 </div>
             </div>
-            <div id="opsManifest" class="card overflow-hidden hidden"></div>
+            <div id="opsManifest" class="card overflow-hidden hidden mb-6"></div>
+            <div id="opsSales" class="card p-5 md:p-6 mb-6"></div>
+            <div id="opsAdmin" class="grid lg:grid-cols-2 gap-6"></div>
         </div>
 
         <!-- TICKET SCANNER (staff demo) -->
@@ -817,7 +829,11 @@
             <form class="card p-5 space-y-4" onsubmit="event.preventDefault(); scanCheck();">
                 <div><label for="scanDate" class="lbl">Boarding for</label><input type="date" id="scanDate" class="inp"></div>
                 <div><label for="scanInput" class="lbl">QR code text or booking reference</label><input type="text" id="scanInput" class="inp font-mono text-sm" placeholder="SL-12345X" autocomplete="off"></div>
-                <button class="btn-blue w-full py-3.5"><i class="fa-solid fa-qrcode mr-2"></i>Check ticket</button>
+                <video id="scanVideo" playsinline muted class="hidden w-full rounded-xl bg-black aspect-video object-cover"></video>
+                <div class="grid grid-cols-2 gap-3">
+                    <button type="button" onclick="scanCamera()" class="btn-ghost py-3.5"><i class="fa-solid fa-camera mr-2"></i><span id="scanCamLbl">Scan with camera</span></button>
+                    <button class="btn-blue py-3.5"><i class="fa-solid fa-qrcode mr-2"></i>Check ticket</button>
+                </div>
                 <div><div class="lbl">Scan a booking from this device</div><div class="flex flex-wrap gap-2" id="scanPicks"></div></div>
             </form>
             <div id="scanResult" class="card overflow-hidden mt-5 hidden" aria-live="polite"></div>
@@ -1022,6 +1038,28 @@
         </div>
     </div>
 
+    <!-- Wallet, QR or card step before a payment is confirmed -->
+    <div id="payModal" class="modal hidden opacity-0 !z-[115]" data-dismiss>
+        <div class="bg-white rounded-3xl w-full max-w-sm mx-4 shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden" id="payModalContent">
+            <h3 class="sr-only">Complete your payment</h3>
+            <div id="payBody"></div>
+        </div>
+    </div>
+
+    <!-- Guided tour card -->
+    <div id="tourCard" class="hidden fixed inset-x-0 bottom-[4.5rem] xl:bottom-6 z-[260] px-4 no-print" role="region" aria-label="Guided tour" aria-live="polite">
+        <div class="max-w-md mx-auto bg-slate-900 text-white rounded-2xl shadow-2xl p-5 border border-slate-700">
+            <div class="flex items-center justify-between gap-3 mb-1"><span class="text-[10px] font-black tracking-widest text-accent-gold uppercase">Guided tour · <span id="tourStep" data-notr></span></span>
+                <button onclick="tourEnd()" class="text-xs font-bold text-slate-400 hover:text-white">End tour</button></div>
+            <div class="font-black text-lg" id="tourTitle"></div>
+            <p class="text-sm text-slate-300 mt-1" id="tourText"></p>
+            <div class="flex gap-3 mt-4">
+                <button id="tourBack" onclick="tourGo(S.tour - 1)" class="flex-1 py-2.5 rounded-xl border border-slate-600 font-bold text-sm disabled:opacity-40">Back</button>
+                <button id="tourNext" onclick="tourGo(S.tour + 1)" class="flex-1 py-2.5 rounded-xl bg-accent-gold text-slate-900 font-black text-sm">Next</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Notifications -->
     <div id="notesModal" class="modal hidden opacity-0 !items-start" data-dismiss>
         <div class="bg-white rounded-3xl w-full max-w-md mx-4 mt-20 shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col max-h-[75vh]" id="notesModalContent">
@@ -1048,7 +1086,7 @@
         </div>
     </div>
 
-    <script src="fil.js"></script>
-    <script src="app.js"></script>
+    <script src="fil.js?v=4"></script>
+    <script src="app.js?v=4"></script>
 </body>
 </html>
