@@ -13,7 +13,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon-192.png">
-    <link href="tailwind.css?v=8" rel="stylesheet">
+    <link href="tailwind.css?v=10" rel="stylesheet">
     <link href="fa/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
@@ -67,6 +67,44 @@
         button:active:not(:disabled):not(.absolute):not(.fixed) { transform: scale(0.98); }
         #fareCal::-webkit-scrollbar, #chatChips::-webkit-scrollbar { display: none; }
         #fareCal, #chatChips { scrollbar-width: none; }
+
+        /* dark mode: the light utilities are remapped, so every screen follows without its own dark classes */
+        html.dark { color-scheme: dark; }
+        html.dark body, .dark .bg-slate-50 { background-color: #0b1220 !important; }
+        html.dark body { color: #e2e8f0; }
+        .dark .bg-white, .dark .card, .dark .btn-ghost { background-color: #131c31 !important; }
+        .dark .bg-white\/90 { background-color: rgba(19, 28, 49, 0.9) !important; }
+        .dark .bg-slate-100 { background-color: #1b2742 !important; }
+        .dark .bg-slate-200 { background-color: #26345a !important; }
+        .dark .text-slate-800, .dark .text-slate-700, .dark .btn-ghost { color: #e8edf7 !important; }
+        .dark .text-slate-600 { color: #c3cde0 !important; }
+        .dark .text-slate-500 { color: #9aa8c2 !important; }
+        .dark .text-brand-blue { color: #a9c1ff !important; }
+        .dark .text-brand-red { color: #f87171 !important; }
+        .dark .border-slate-100, .dark .border-slate-200, .dark .border-slate-300, .dark .card, .dark .inp, .dark .btn-ghost { border-color: #2a3759 !important; }
+        .dark .divide-slate-100 > * + *, .dark .divide-y > * + * { border-color: #2a3759 !important; }
+        .dark .inp { background-color: #0f182b !important; color: #e8edf7 !important; }
+        .dark #navbar, .dark #tabbar, .dark #mobileMenu { background-color: rgba(13, 20, 36, 0.96) !important; border-color: #2a3759 !important; }
+        .dark .hover\:bg-slate-50:hover, .dark .hover\:bg-blue-50:hover { background-color: #1b2742 !important; }
+        .dark .bg-blue-50 { background-color: #172543 !important; }
+        .dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #93b4ff !important; }
+        .dark .border-blue-100, .dark .border-blue-200 { border-color: #2b4170 !important; }
+        .dark .bg-amber-50, .dark .bg-amber-50\/70 { background-color: #2b2210 !important; }
+        .dark .text-amber-900, .dark .text-amber-800, .dark .text-amber-700 { color: #fcd77a !important; }
+        .dark .border-amber-200 { border-color: #5b4716 !important; }
+        .dark .bg-green-50, .dark .bg-green-50\/60, .dark .bg-green-100 { background-color: #10291f !important; }
+        .dark .text-green-700, .dark .text-green-600 { color: #6ee7b7 !important; }
+        .dark .border-green-200 { border-color: #1f5a41 !important; }
+        .dark .bg-red-50 { background-color: #2d1414 !important; }
+        .dark .text-red-800, .dark .text-red-700, .dark .text-red-600 { color: #fca5a5 !important; }
+        .dark .border-red-200 { border-color: #6b2323 !important; }
+        .dark .from-slate-50 { --tw-gradient-from: #0b1220 var(--tw-gradient-from-position) !important; }
+        .dark .bg-brand-blue.text-white, .dark .btn-blue { color: #fff !important; }
+        .dark .btn-blue { background-color: #2f4f8f !important; }
+        .dark .btn-ghost.\!text-brand-red { color: #f87171 !important; }
+        .dark .btn-ghost.\!text-amber-700 { color: #fcd77a !important; }
+        /* codes are read by cameras: they stay dark on white */
+        .dark .qr, .dark #tktQR, .dark :has(> #tktQR) { background-color: #fff !important; }
         .tour-ring { outline: 4px solid #d4af37 !important; outline-offset: 4px; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.18); }
         main:focus { outline: none; }
         @media (prefers-reduced-motion: reduce) {
@@ -104,6 +142,7 @@
                     <div class="h-6 w-px bg-slate-300"></div>
                     <a onclick="navigateTo('view-trips')" class="navlink flex items-center gap-2"><i class="fa-solid fa-ticket"></i> <span data-i18n>My Trips</span></a>
                     <button data-bell onclick="openNotes()" aria-label="Notifications" class="relative w-9 h-9 rounded-full border border-slate-300 text-slate-500 hover:border-brand-blue hover:text-brand-blue flex items-center justify-center"><i class="fa-regular fa-bell"></i><span data-bell-badge data-notr class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-red text-white text-[10px] font-black flex items-center justify-center">0</span></button>
+                    <button data-theme-toggle onclick="toggleTheme()" aria-label="Switch to dark mode" class="w-9 h-9 rounded-full border border-slate-300 text-slate-500 hover:border-brand-blue hover:text-brand-blue flex items-center justify-center"><i class="fa-solid fa-moon"></i></button>
                     <button data-lang-toggle onclick="toggleLang()" class="text-xs font-black text-slate-500 border border-slate-300 rounded-full px-3 py-1.5 hover:border-brand-blue hover:text-brand-blue" aria-label="Switch language">EN</button>
                     <button onclick="accountClick()" id="btnSignIn" class="bg-brand-blue hover:bg-slate-800 text-white px-5 py-2.5 rounded-full font-medium text-sm transition-all shadow-md flex items-center gap-2">
                         <i class="fa-regular fa-user"></i> <span id="signInText">Sign In</span>
@@ -112,6 +151,7 @@
 
                 <div class="xl:hidden flex items-center gap-1">
                     <button data-bell onclick="openNotes()" aria-label="Notifications" class="relative w-9 h-9 rounded-full border border-slate-300 text-slate-500 hover:border-brand-blue hover:text-brand-blue flex items-center justify-center"><i class="fa-regular fa-bell"></i><span data-bell-badge data-notr class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-red text-white text-[10px] font-black flex items-center justify-center">0</span></button>
+                    <button data-theme-toggle onclick="toggleTheme()" aria-label="Switch to dark mode" class="hidden sm:flex w-9 h-9 rounded-full border border-slate-300 text-slate-500 items-center justify-center"><i class="fa-solid fa-moon"></i></button>
                     <button data-lang-toggle onclick="toggleLang()" class="text-[11px] font-black text-slate-500 border border-slate-300 rounded-full px-2.5 py-1" aria-label="Switch language">EN</button>
                     <button onclick="toggleMobileMenu()" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="mobileMenu" class="text-slate-600 hover:text-brand-blue focus:outline-none p-2">
                         <i class="fa-solid fa-bars text-2xl"></i>
@@ -135,6 +175,7 @@
         </div>
     </nav>
 
+    <div id="offlineBar" role="status" class="hidden fixed top-16 xl:top-20 inset-x-0 z-40 bg-slate-800 text-white text-sm font-medium text-center px-4 py-2 no-print"><i class="fa-solid fa-plane-slash mr-2 text-accent-gold"></i>You are offline. Your saved tickets still open in My Trips. Booking and payment need a connection.</div>
     <main id="app-container" tabindex="-1" class="pt-16 xl:pt-20 pb-12">
 
         <!-- HOME -->
@@ -887,6 +928,77 @@
             <div id="drvTrips" class="space-y-4"></div>
         </div>
 
+        <!-- TERMS AND PRIVACY (sample wording) -->
+        <div id="view-legal" data-notr class="view-page hidden max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
+            <h2 class="page-title text-2xl md:text-3xl font-black text-slate-800 mb-6">Terms and privacy</h2>
+            <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 mb-6 text-sm"><i class="fa-solid fa-circle-info text-amber-500 mr-2"></i>Sample wording for this demo. Have your counsel and your Data Protection Officer review and replace it before launch.</div>
+            <div class="card p-5 md:p-8 mb-6">
+                <h3 class="text-lg font-black text-slate-800 mb-3">Terms of service and fare rules</h3>
+                <ol class="text-sm text-slate-600 space-y-3 list-decimal pl-5">
+                    <li><strong class="text-slate-800">Your ticket.</strong> A paid booking is a contract of carriage for the named passengers, date, bus and seats. The QR code is the ticket. One scan boards the party; a copy that has already been scanned is refused.</li>
+                    <li><strong class="text-slate-800">Fares.</strong> Fares are per passenger and exclude the terminal fee. Friday and Sunday fares are higher and Tuesday and Wednesday fares are lower than the regular fare. The fare you pay is the one shown at checkout.</li>
+                    <li><strong class="text-slate-800">Discounts.</strong> Senior citizens, persons with disability, students and children 3 to 11 pay 20% less on presenting the matching valid ID at boarding. Without the ID, the fare difference is collected.</li>
+                    <li><strong class="text-slate-800">Changes.</strong> You may rebook up to 4 hours before departure for ₱100 per passenger. If your seats are taken on the new date you are given the nearest free ones.</li>
+                    <li><strong class="text-slate-800">Cancellations and refunds.</strong> 80% is refunded when you cancel 24 hours or more before departure, 50% between 24 and 4 hours, and nothing after that. Approved refunds return to the original payment method within 3 to 5 banking days.</li>
+                    <li><strong class="text-slate-800">Trips we cancel.</strong> If we cancel a trip, you choose a free rebooking to any date within 30 days or a full refund.</li>
+                    <li><strong class="text-slate-800">Boarding.</strong> Be at the terminal 30 minutes before departure. Boarding closes 10 minutes before the bus leaves and a no-show ticket is forfeited.</li>
+                    <li><strong class="text-slate-800">Baggage, pets and cargo.</strong> The limits and fees on the Help page form part of these terms. We may refuse items that are unsafe or prohibited by law.</li>
+                    <li><strong class="text-slate-800">Liability.</strong> Our liability for delay, baggage and injury is as provided by Philippine law on common carriers. Optional travel insurance is provided by the named insurer under its own policy.</li>
+                </ol>
+            </div>
+            <div class="card p-5 md:p-8">
+                <h3 class="text-lg font-black text-slate-800 mb-3">Privacy notice (Republic Act 10173)</h3>
+                <div class="text-sm text-slate-600 space-y-3">
+                    <p><strong class="text-slate-800">What we collect.</strong> Passenger names, fare type, mobile number, optional email, booking and payment references, seat and trip details, and, if you sign in, your saved passengers and points. We do not store card numbers or wallet PINs; payments are handled by the payment provider.</p>
+                    <p><strong class="text-slate-800">Why we use it.</strong> To issue and check your ticket, send booking messages, handle changes and refunds, meet legal and safety duties such as passenger manifests, and, only if you opt in, send promos.</p>
+                    <p><strong class="text-slate-800">Who sees it.</strong> Our terminal, gate and dispatch staff for the trips you book, our payment and SMS providers, and government agencies when the law requires. We do not sell personal data.</p>
+                    <p><strong class="text-slate-800">How long we keep it.</strong> Booking records are kept for as long as tax and transport rules require, then deleted or anonymised. You can delete a saved passenger or your account at any time.</p>
+                    <p><strong class="text-slate-800">Your rights.</strong> You may ask to see, correct, or delete your data, object to marketing, and complain to the National Privacy Commission. Write to our Data Protection Officer through the contact details on the Help page.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOR BUS OPERATORS -->
+        <div id="view-operators" data-notr class="hidden animate-fade-in">
+            <section class="bg-brand-blue text-white">
+                <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20">
+                    <div class="text-[11px] font-black tracking-widest text-accent-gold mb-3">FOR BUS OPERATORS</div>
+                    <h2 class="text-3xl md:text-5xl font-black leading-tight max-w-3xl">Sell every seat online, and run the terminal from one screen.</h2>
+                    <p class="text-slate-300 text-lg mt-4 max-w-2xl">One system for the passenger app, the counter, the gate and dispatch, all reading the same seat map. Everything on this site is a working demo of it.</p>
+                    <div class="flex flex-wrap gap-3 mt-8">
+                        <button onclick="tourGo(0)" class="bg-accent-gold text-slate-900 font-black rounded-xl px-6 py-3.5"><i class="fa-solid fa-circle-play mr-2"></i>Take the 2-minute tour</button>
+                        <button onclick="navigateTo('view-ops')" class="bg-white/10 border border-white/30 font-bold rounded-xl px-6 py-3.5">Open the operator console</button>
+                    </div>
+                </div>
+            </section>
+            <section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                <h3 class="text-2xl font-black text-slate-800 mb-6">What your passengers get</h3>
+                <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
+                    <div class="card p-5"><i class="fa-solid fa-couch text-brand-blue text-xl mb-3 block"></i><div class="font-black text-slate-800 mb-1">Seat-level booking</div><p class="text-sm text-slate-600">Either direction, one way or round trip, up to ten passengers, with a seat chosen for each one.</p></div>
+                    <div class="card p-5"><i class="fa-solid fa-wallet text-brand-blue text-xl mb-3 block"></i><div class="font-black text-slate-800 mb-1">Local payments</div><p class="text-sm text-slate-600">GCash, Maya, QR Ph and cards, with seats held while they pay and a clean retry when a payment fails.</p></div>
+                    <div class="card p-5"><i class="fa-solid fa-qrcode text-brand-blue text-xl mb-3 block"></i><div class="font-black text-slate-800 mb-1">A ticket that works offline</div><p class="text-sm text-slate-600">A signed QR code saved on the phone. Rebooking, refunds, reminders and delay alerts without a phone call.</p></div>
+                    <div class="card p-5"><i class="fa-solid fa-language text-brand-blue text-xl mb-3 block"></i><div class="font-black text-slate-800 mb-1">English and Filipino</div><p class="text-sm text-slate-600">The whole passenger side switches language, and installs to the home screen like an app.</p></div>
+                    <div class="card p-5"><i class="fa-solid fa-satellite-dish text-brand-blue text-xl mb-3 block"></i><div class="font-black text-slate-800 mb-1">Live bus status</div><p class="text-sm text-slate-600">A route map and arrival board, so passengers and the people meeting them stop calling the terminal.</p></div>
+                    <div class="card p-5"><i class="fa-solid fa-box text-brand-blue text-xl mb-3 block"></i><div class="font-black text-slate-800 mb-1">Cargo and add-ons</div><p class="text-sm text-slate-600">Parcel drop-offs, extra baggage, pets and insurance sold in the same checkout.</p></div>
+                </div>
+                <h3 class="text-2xl font-black text-slate-800 mb-6">What your team gets</h3>
+                <div class="grid sm:grid-cols-2 gap-4 mb-12">
+                    <div class="card p-5"><div class="font-black text-slate-800 mb-1"><i class="fa-solid fa-tower-broadcast text-brand-blue mr-2"></i>Dispatch</div><p class="text-sm text-slate-600">Every departure with seats sold and revenue, buses and drivers assigned, delays pushed to passengers in one tap, fares, promo codes and advisories changed without a developer.</p></div>
+                    <div class="card p-5"><div class="font-black text-slate-800 mb-1"><i class="fa-solid fa-cash-register text-brand-blue mr-2"></i>Counter</div><p class="text-sm text-slate-600">Walk-in sales on the same seat map as online sales, so a seat is never sold twice. The manifest prints from the same list.</p></div>
+                    <div class="card p-5"><div class="font-black text-slate-800 mb-1"><i class="fa-solid fa-id-card-clip text-brand-blue mr-2"></i>Gate</div><p class="text-sm text-slate-600">Scan to board. Wrong date, already boarded, cancelled and tampered tickets are each caught and explained.</p></div>
+                    <div class="card p-5"><div class="font-black text-slate-800 mb-1"><i class="fa-solid fa-id-badge text-brand-blue mr-2"></i>Driver</div><p class="text-sm text-slate-600">Assigned trips, the head count against scanned tickets, and trip start and arrival sent to dispatch.</p></div>
+                </div>
+                <h3 class="text-2xl font-black text-slate-800 mb-6">From demo to live</h3>
+                <ol class="grid md:grid-cols-4 gap-4 mb-10">
+                    <li class="card p-5"><div class="text-xs font-black text-brand-red mb-1">STEP 1</div><div class="font-black text-slate-800 mb-1">Your data</div><p class="text-sm text-slate-600">Routes, schedules, fares, seat layouts, policies and photos replace the samples.</p></li>
+                    <li class="card p-5"><div class="text-xs font-black text-brand-red mb-1">STEP 2</div><div class="font-black text-slate-800 mb-1">The server</div><p class="text-sm text-slate-600">One booking system behind every screen, with staff accounts and signed tickets.</p></li>
+                    <li class="card p-5"><div class="text-xs font-black text-brand-red mb-1">STEP 3</div><div class="font-black text-slate-800 mb-1">Payments and SMS</div><p class="text-sm text-slate-600">A payment gateway and an SMS sender connected under your company's accounts.</p></li>
+                    <li class="card p-5"><div class="text-xs font-black text-brand-red mb-1">STEP 4</div><div class="font-black text-slate-800 mb-1">Pilot one route</div><p class="text-sm text-slate-600">Run it on one route alongside the counter, then widen it.</p></li>
+                </ol>
+                <p class="text-sm text-slate-500">This page describes what the demo shows. It makes no claim about results at any operator.</p>
+            </section>
+        </div>
+
         <!-- ACCOUNT -->
         <div id="view-account" class="view-page hidden max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
             <h2 class="page-title text-2xl md:text-3xl font-black text-slate-800 mb-6" data-i18n>Account</h2>
@@ -934,6 +1046,7 @@
                         <li><a onclick="navigateTo('view-help')" class="hover:text-white hover:underline cursor-pointer">FAQ</a></li>
                         <li><a onclick="handleNavClick(event, 'section-fleet')" class="hover:text-white hover:underline cursor-pointer">Our Fleet</a></li>
                         <li><a onclick="navigateTo('view-ops')" class="hover:text-white hover:underline cursor-pointer">Operator console (staff demo)</a></li>
+                        <li><a onclick="navigateTo('view-operators')" class="hover:text-white hover:underline cursor-pointer">For bus operators</a></li>
                     </ul>
                 </div>
                 <div>
@@ -953,8 +1066,8 @@
             <div class="border-t border-slate-800 pt-6 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-500">
                 <div>&copy; 2026 Biyahe Bicol Demo Lines, a placeholder brand.</div>
                 <div class="flex gap-6">
-                    <a onclick="navigateTo('view-help')" class="hover:text-white cursor-pointer">Terms & Fare Rules</a>
-                    <a onclick="navigateTo('view-help')" class="hover:text-white cursor-pointer">Data Privacy (RA 10173)</a>
+                    <a onclick="navigateTo('view-legal')" class="hover:text-white cursor-pointer">Terms & Fare Rules</a>
+                    <a onclick="navigateTo('view-legal')" class="hover:text-white cursor-pointer">Data Privacy (RA 10173)</a>
                 </div>
             </div>
             <div class="text-center text-[11px] text-slate-600 mt-5">Prototype demo with a placeholder brand. Schedules, fares, policies, contact details and seats are sample data, and no payment is taken.</div>
@@ -1189,7 +1302,7 @@
         </div>
     </div>
 
-    <script src="fil.js?v=8"></script>
-    <script src="app.js?v=8"></script>
+    <script src="fil.js?v=10"></script>
+    <script src="app.js?v=10"></script>
 </body>
 </html>

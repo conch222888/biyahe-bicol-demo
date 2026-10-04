@@ -84,7 +84,7 @@ const STATUS_CLASS = {
 /* ------------------------------------------------------- storage and state */
 
 const STORE = 'bb_site_v1';
-const DB = Object.assign({ bookings: [], parcels: [], profile: null, points: 0, lang: 'en', notes: [], follow: [], counter: [], saved: [], fares: null, advisory: null, waitlist: [], groups: [], promos: {}, staff: null, assign: {}, tripState: {} },
+const DB = Object.assign({ bookings: [], parcels: [], profile: null, points: 0, lang: 'en', theme: 'light', notes: [], follow: [], counter: [], saved: [], fares: null, advisory: null, waitlist: [], groups: [], promos: {}, staff: null, assign: {}, tripState: {} },
     (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { return {}; } })());
 // fares the operator changed in the console override the built-in ones
 const BASE_FARES = JSON.parse(JSON.stringify(ROUTES));
@@ -184,8 +184,8 @@ function toast(msg, kind) {
 
 /* -------------------------------------------------------------- navigation */
 
-const VIEWS = ['view-home', 'view-results', 'view-checkout', 'view-ticket', 'view-trips', 'view-schedules', 'view-track', 'view-cargo', 'view-help', 'view-account', 'view-ops', 'view-scan', 'view-driver'];
-const TAB_OF = { 'view-results': 'view-home', 'view-checkout': 'view-home', 'view-ticket': 'view-trips', 'view-cargo': 'view-account', 'view-help': 'view-account', 'view-ops': 'view-account', 'view-scan': 'view-account', 'view-driver': 'view-account' };
+const VIEWS = ['view-home', 'view-results', 'view-checkout', 'view-ticket', 'view-trips', 'view-schedules', 'view-track', 'view-cargo', 'view-help', 'view-account', 'view-ops', 'view-scan', 'view-driver', 'view-legal', 'view-operators'];
+const TAB_OF = { 'view-results': 'view-home', 'view-checkout': 'view-home', 'view-ticket': 'view-trips', 'view-cargo': 'view-account', 'view-help': 'view-account', 'view-ops': 'view-account', 'view-scan': 'view-account', 'view-driver': 'view-account', 'view-legal': 'view-account', 'view-operators': 'view-account' };
 let currentView = 'view-home';
 
 function guard(view) {
@@ -750,6 +750,7 @@ let paying = false;
 // Pay button: show the wallet, QR or card screen for the chosen method first
 function processPayment() {
     if (paying || !S.legs.length) return;
+    if (!navigator.onLine) { toast('You are offline. Reconnect to pay. Your seats stay held while the timer runs.', 'error'); return; }
     $('payError').classList.add('hidden');
     openPay();
 }
@@ -2023,6 +2024,24 @@ function opsExport() {
     toast(`Sales for ${fmtDate(rows[0].date)} downloaded: ${lines.length - 1} seats.`);
 }
 
+/* ------------------------------------------- appearance, connection, errors */
+
+function applyTheme() {
+    const dark = DB.theme === 'dark';
+    document.documentElement.classList.toggle('dark', dark);
+    const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = dark ? '#0b1220' : '#1a2b4c';
+    document.querySelectorAll('[data-theme-toggle] i').forEach(i => i.className = dark ? 'fa-solid fa-sun' : 'fa-solid fa-moon');
+    document.querySelectorAll('[data-theme-toggle]').forEach(b => b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'));
+}
+function toggleTheme() { DB.theme = DB.theme === 'dark' ? 'light' : 'dark'; save(); applyTheme(); if (currentView === 'view-account') renderAccount(); }
+function updateOnline() { $('offlineBar').classList.toggle('hidden', navigator.onLine); }
+
+// One calm message if a screen breaks, instead of a dead button and silence.
+let lastErrToast = 0;
+function reportError() { const now = Date.now(); if (now - lastErrToast < 15000) return; lastErrToast = now; toast('Something went wrong on this screen. Reload the page if it keeps happening.', 'error'); }
+window.addEventListener('error', (e) => { if (e.error) reportError(); });
+window.addEventListener('unhandledrejection', reportError);
+
 /* ------------------------------------------------------------ help, account */
 
 function renderHelp() {
@@ -2076,6 +2095,8 @@ function renderAccount() {
             <button onclick="tourGo(0)" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-route w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">Take the guided tour</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
             <button onclick="loadSample()" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-wand-magic-sparkles w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">Load a sample trip</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
             <button onclick="navigateTo('view-ops')" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-clipboard-list w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">Operator console</span><span class="text-xs text-slate-400">Staff demo</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
+            <button onclick="toggleTheme()" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-circle-half-stroke w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">Appearance</span><span class="text-xs font-black text-slate-500">${DB.theme === 'dark' ? 'Dark' : 'Light'}</span></button>
+            <button onclick="navigateTo('view-legal')" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-scale-balanced w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">Terms and privacy</span><i class="fa-solid fa-chevron-right text-xs text-slate-300"></i></button>
             <button onclick="toggleLang()" class="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-50"><i class="fa-solid fa-language w-5 text-brand-blue"></i><span class="flex-1 font-bold text-slate-700">${t('Language')}</span><span class="text-xs font-black text-slate-500">${DB.lang === 'fil' ? 'Filipino' : 'English'}</span></button>
         </div>
         <div class="card p-5">
@@ -2170,6 +2191,11 @@ window.addEventListener('DOMContentLoaded', () => {
         muts.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 3) trNode(n); else if (n.nodeType === 1) trTree(n); }));
     }).observe(document.body, { childList: true, subtree: true });
     updateBell(); checkReminders(); setInterval(checkReminders, 60000);
+    applyTheme(); updateOnline();
+    window.addEventListener('online', updateOnline); window.addEventListener('offline', updateOnline);
+    // a photo that fails to load leaves its tinted frame, not a broken-image icon
+    document.addEventListener('error', (e) => { if (e.target && e.target.tagName === 'IMG') e.target.style.visibility = 'hidden'; }, true);
+    if (/[?&]selftest/.test(location.search)) { const sc = document.createElement('script'); sc.src = 'selftest.js'; document.body.appendChild(sc); }
 
     const termOpts = TERMINALS.map(x => `<option>${x.name}</option>`).join('');
     $('cgFrom').innerHTML = termOpts; $('cgTo').innerHTML = termOpts; $('cgTo').selectedIndex = 3;

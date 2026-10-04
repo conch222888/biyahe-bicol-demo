@@ -343,3 +343,12 @@ FIL_RX.push(
     [/^(\w+) applied: (\d+)% off fares\.$/, 'Nagamit ang $1: $2% bawas sa pamasahe.'],
     [/^(\w+) applied: (₱\d+) off\.$/, 'Nagamit ang $1: $2 bawas.']
 );
+
+// appearance, connection and error states, legal and operator links
+Object.assign(FIL, {
+    'For bus operators': 'Para sa mga bus operator', 'Appearance': 'Itsura', 'Dark': 'Madilim', 'Light': 'Maliwanag', 'Terms and privacy': 'Mga tuntunin at privacy',
+    'Switch to dark mode': 'Lumipat sa madilim na mode', 'Switch to light mode': 'Lumipat sa maliwanag na mode',
+    'You are offline. Your saved tickets still open in My Trips. Booking and payment need a connection.': 'Offline ka. Mabubuksan pa rin ang mga naka-save na ticket sa Mga Biyahe Ko. Kailangan ng koneksyon para mag-book at magbayad.',
+    'You are offline. Reconnect to pay. Your seats stay held while the timer runs.': 'Offline ka. Kumonekta muli para magbayad. Naka-hold pa ang mga upuan mo habang tumatakbo ang timer.',
+    'Something went wrong on this screen. Reload the page if it keeps happening.': 'May nagkaproblema sa screen na ito. I-reload ang page kung paulit-ulit.'
+});
