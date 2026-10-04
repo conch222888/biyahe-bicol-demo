@@ -218,6 +218,7 @@ const FIL_RX = [
     [/^Door seat premium \((\d+)×\)$/, 'Dagdag sa upuang malapit sa pinto ($1×)'],
     [/^Terminal fee \(2 trips\)$/, 'Terminal fee (2 biyahe)'],
     [/^Senior \/ PWD \/ Student \((\d+)\)$/, 'Senior / PWD / Estudyante ($1)'],
+    [/^Discounted fares \((\d+)\)$/, 'May diskwentong pamasahe ($1)'],
     [/^Extra baggage \(\+(\d+) kg\)$/, 'Dagdag na bagahe (+$1 kg)'],
     [/^\+(\d+) kg baggage( paid)?$/, (m, n, paid) => `+${n} kg na bagahe${paid ? ', bayad na' : ''}`],
     [/^Travel insurance \((\d+) pax\)$/, 'Travel insurance ($1 pasahero)'],
@@ -293,4 +294,52 @@ FIL_RX.push(
     [/^Pay (₱[\d,.]+)$/, 'Magbayad ng $1'],
     [/^(\d+) bus(?:es)? on the road$/, '$1 bus ang nasa biyahe'],
     [/^arrives (.+)$/, 'darating nang $1']
+);
+
+// fare calendar, waitlist, groups, infants, ratings, refunds, help chat
+Object.assign(FIL, {
+    '11 or more? Request a group booking': '11 o higit pa? Humiling ng group booking', 'Infants on lap': 'Sanggol na kandong',
+    'Under 3 feet tall, free, no seat. One per paying adult.': 'Wala pang 3 talampakan, libre, walang upuan. Isa bawat nagbabayad na matanda.',
+    'Child 3 to 11 (20% off)': 'Bata 3 hanggang 11 (20% diskwento)', 'Child': 'Bata', 'Full': 'Puno',
+    'Daily departures. Fares are per passenger, before the ₱30 terminal fee. Fridays and Sundays cost 10% more, Tuesdays and Wednesdays 10% less.': 'Araw-araw ang mga biyahe. Bawat pasahero ang pamasahe, hindi pa kasama ang ₱30 terminal fee. Mas mahal nang 10% tuwing Biyernes at Linggo, mas mura nang 10% tuwing Martes at Miyerkules.',
+    'Join waitlist': 'Sumali sa waitlist', 'On the waitlist': 'Nasa waitlist', 'Join the waitlist': 'Sumali sa waitlist', 'Mobile number for the alert': 'Mobile number para sa abiso',
+    'Enter an 11-digit mobile number starting with 09.': 'Maglagay ng 11-digit na mobile number na nagsisimula sa 09.',
+    'You are on the waitlist. We will alert you if seats open up.': 'Nasa waitlist ka na. Aabisuhan ka namin kapag may nabakanteng upuan.', 'Seats opened up': 'May nabakanteng upuan',
+    'Group booking request': 'Hiling na group booking', 'For 11 passengers or more. We call you with a quote within one business day.': 'Para sa 11 pasahero o higit pa. Tatawagan ka namin na may quote sa loob ng isang araw ng trabaho.',
+    'Contact name or organisation': 'Pangalan o organisasyon', 'Travel date': 'Petsa ng biyahe', 'Notes (optional)': 'Tala (opsyonal)', 'Send request': 'Ipadala ang hiling',
+    'e.g. school field trip, return same day': 'hal. field trip ng paaralan, balik sa parehong araw', 'Group request received': 'Natanggap ang hiling na group booking',
+    'How was your trip?': 'Kumusta ang biyahe mo?', 'Anything we should know? (optional)': 'May gusto ka bang sabihin? (opsyonal)', 'Not now': 'Mamaya na', 'Send rating': 'Ipadala ang rating',
+    'Tap a star to rate the trip.': 'Pumindot ng bituin para i-rate ang biyahe.', 'Thank you. Your rating was sent to the operator.': 'Salamat. Naipadala sa kompanya ang rating mo.',
+    'Rate this trip': 'I-rate ang biyaheng ito', 'Your rating:': 'Ang rating mo:', 'Comment': 'Komento', 'Refund sent': 'Naipadala ang refund',
+    'Help chat': 'Tulong na chat', 'Help assistant': 'Katulong', 'Answers from our FAQ and travel rules. Not a live agent.': 'Mga sagot mula sa FAQ at patakaran sa biyahe. Hindi live na ahente.',
+    'Schedule to Daet': 'Iskedyul papuntang Daet', 'Baggage allowance': 'Pinapayagang bagahe', 'Can I bring my pet?': 'Puwede ko bang dalhin ang alaga ko?', 'Type your question': 'I-type ang tanong mo', 'Send': 'Ipadala',
+    'Hello! Ask me about schedules, fares, baggage, pets, discounts, refunds, rebooking, cargo or tracking a bus.': 'Kumusta! Magtanong tungkol sa iskedyul, pamasahe, bagahe, alaga, diskwento, refund, rebooking, padala o pagsubaybay ng bus.',
+    'I can help with schedules, fares, baggage, pets, discounts, refunds, rebooking, cargo and tracking a bus. For anything else, our team is on the hotline and Messenger.': 'Makakatulong ako sa iskedyul, pamasahe, bagahe, alaga, diskwento, refund, rebooking, padala at pagsubaybay ng bus. Para sa iba pa, nasa hotline at Messenger ang aming team.',
+    'Which destination? We run daily trips to Daet, Naga, Jose Panganiban and Pio Duran.': 'Saang destinasyon? May araw-araw kaming biyahe papuntang Daet, Naga, Jose Panganiban at Pio Duran.',
+    'Free: one checked bag up to 20 kg in the hold, plus one small hand-carry on board. Excess baggage: ₱20 per kg, paid at the counter. Single pieces over 30 kg travel as cargo.': 'Libre: isang bagahe hanggang 20 kg sa compartment, at isang maliit na hand-carry sa loob. Sobrang bagahe: ₱20 bawat kg, babayaran sa counter. Ang isang pirasong lampas 30 kg ay ituturing na cargo.',
+    'Small cats and dogs (up to 10 kg) are welcome on Standard coaches, in a closed, leak-proof carrier. One pet per passenger, ₱150 per trip. The carrier stays at your feet, not on a seat.': 'Puwede sa Standard coach ang maliliit na pusa at aso (hanggang 10 kg), nasa sarado at hindi tumatagas na carrier. Isang alaga bawat pasahero, ₱150 bawat biyahe. Sa paanan mo ang carrier, hindi sa upuan.',
+    'Live Status shows every bus on the road and its arrival time. Tap the bell on a bus to be alerted if it runs late.': 'Makikita sa Live Status ang bawat bus na nasa biyahe at ang oras ng dating nito. Pindutin ang kampana ng bus para maabisuhan kapag naantala.',
+    'Parcels up to 50 kg travel on the next bus. Up to 3 kg is ₱150, up to 10 kg ₱300, up to 20 kg ₱500. Drop off at the terminal counter one hour before departure.': 'Isinasakay sa susunod na bus ang parcel hanggang 50 kg. Hanggang 3 kg ay ₱150, hanggang 10 kg ₱300, hanggang 20 kg ₱500. Dalhin sa counter ng terminal isang oras bago umalis.',
+    'For 11 or more passengers, send a group request and our team will call you with a quote within one business day.': 'Para sa 11 pasahero o higit pa, magpadala ng hiling na group booking at tatawagan ka ng aming team na may quote sa loob ng isang araw ng trabaho.',
+    'You can pay with GCash, Maya, QR Ph, or a credit or debit card. Your seats are held for 10 minutes while you pay.': 'Puwedeng magbayad gamit ang GCash, Maya, QR Ph, o credit o debit card. Naka-hold ang mga upuan mo nang 10 minuto habang nagbabayad.',
+    'You can reach our team any time through the hotline or Messenger. The numbers are on the Help page.': 'Makakausap mo ang aming team anumang oras sa hotline o Messenger. Nasa pahina ng Tulong ang mga numero.',
+    'See all schedules': 'Tingnan ang lahat ng iskedyul', 'Book this route': 'I-book ang rutang ito', 'See all fares': 'Tingnan ang lahat ng pamasahe', 'Open My Trips': 'Buksan ang Mga Biyahe Ko',
+    'Baggage rules': 'Patakaran sa bagahe', 'Pet rules': 'Patakaran sa alaga', 'Open Live Status': 'Buksan ang Live Status', 'Book a drop-off': 'Mag-book ng padala', 'Open Account': 'Buksan ang Account',
+    'Request a group booking': 'Humiling ng group booking', 'Contact details': 'Paano kami makakausap'
+});
+FIL_RX.push(
+    [/^\+ (\d+) infants? on lap$/, '+ $1 sanggol na kandong'],
+    [/^Bus (.+), (.+) to (.+) on (.+) does not have (\d+) seats free\. We will alert you here the moment enough seats open up\.$/, 'Walang $5 bakanteng upuan ang bus $1, $2 papuntang $3 sa $4. Aabisuhan ka namin dito sa oras na may sapat nang upuan.'],
+    [/^Bus (.+), (.+) to (.+) on (.+) now has (\d+) seats\. Book soon to keep your place\.$/, 'May $5 upuan na ang bus $1, $2 papuntang $3 sa $4. Mag-book agad para hindi maubusan.'],
+    [/^Group request (GR-\d+) sent\. We will call you with a quote\.$/, 'Naipadala ang hiling na $1. Tatawagan ka namin na may quote.'],
+    [/^(GR-\d+): (\d+) passengers to (.+) on (.+)\. Our team will call (\d+) within one business day with a quote\.$/, '$1: $2 pasahero papuntang $3 sa $4. Tatawag ang aming team sa $5 sa loob ng isang araw ng trabaho na may quote.'],
+    [/^Refund of (₱[\d,.]+) is waiting for approval\.$/, 'Hinihintay ang pag-apruba ng refund na $1.'],
+    [/^Refund of (₱[\d,.]+) sent to (.+)\.$/, 'Naipadala ang refund na $1 sa $2.'],
+    [/^Booking cancelled\. (₱[\d,.]+) will be refunded once approved\.$/, 'Kinansela ang booking. $1 ang ire-refund kapag naaprubahan.'],
+    [/^(₱[\d,.]+) for booking (SL-\w+) is on its way to your (.+)\. It can take 3 to 5 banking days to show\.$/, 'Papunta na sa $3 mo ang $1 para sa booking $2. Maaaring abutin ng 3 hanggang 5 banking day bago lumabas.'],
+    [/^Daily departures from PITX to (.+):$/, 'Araw-araw na biyahe mula PITX papuntang $1:'],
+    [/^Manila to (.+): Standard (₱[\d,]+), First Class (₱[\d,]+)\. Fridays and Sundays cost 10% more, Tuesdays and Wednesdays 10% less\.$/, 'Manila papuntang $1: Standard $2, First Class $3. Mas mahal nang 10% tuwing Biyernes at Linggo, mas mura nang 10% tuwing Martes at Miyerkules.'],
+    [/^Fares from Manila start at (₱[\d,]+)\. Tell me the destination for the exact fare\.$/, 'Nagsisimula sa $1 ang pamasahe mula Manila. Sabihin ang destinasyon para sa eksaktong pamasahe.'],
+    [/^(\w+) applied: (\d+)% off fares\.$/, 'Nagamit ang $1: $2% bawas sa pamasahe.'],
+    [/^(\w+) applied: (₱\d+) off\.$/, 'Nagamit ang $1: $2 bawas.']
 );

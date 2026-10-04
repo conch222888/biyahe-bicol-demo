@@ -40,8 +40,8 @@ const DEPS = {
     out: [{ t: '07:00 AM', kind: 'std' }, { t: '08:00 PM', kind: 'fc' }, { t: '09:30 PM', kind: 'std' }, { t: '10:30 PM', kind: 'fc' }],
     ret: [{ t: '06:00 AM', kind: 'std' }, { t: '06:00 PM', kind: 'fc' }, { t: '08:00 PM', kind: 'std' }, { t: '09:00 PM', kind: 'fc' }]
 };
-const FARE_TYPES = { regular: 'Regular', senior: 'Senior Citizen (20% off)', pwd: 'PWD (20% off)', student: 'Student (20% off)' };
-const FARE_SHORT = { regular: '', senior: 'Senior', pwd: 'PWD', student: 'Student' };
+const FARE_TYPES = { regular: 'Regular', senior: 'Senior Citizen (20% off)', pwd: 'PWD (20% off)', student: 'Student (20% off)', child: 'Child 3 to 11 (20% off)' };
+const FARE_SHORT = { regular: '', senior: 'Senior', pwd: 'PWD', student: 'Student', child: 'Child' };
 const PROMOS = {
     BICOL10: { pct: 0.10, label: '10% off fares' },
     SUPER50: { off: 50,   label: '₱50 off' }
@@ -84,7 +84,7 @@ const STATUS_CLASS = {
 /* ------------------------------------------------------- storage and state */
 
 const STORE = 'bb_site_v1';
-const DB = Object.assign({ bookings: [], parcels: [], profile: null, points: 0, lang: 'en', notes: [], follow: [], counter: [], saved: [], fares: null, advisory: null },
+const DB = Object.assign({ bookings: [], parcels: [], profile: null, points: 0, lang: 'en', notes: [], follow: [], counter: [], saved: [], fares: null, advisory: null, waitlist: [], groups: [], promos: {}, staff: null, assign: {}, tripState: {} },
     (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { return {}; } })());
 // fares the operator changed in the console override the built-in ones
 const BASE_FARES = JSON.parse(JSON.stringify(ROUTES));
@@ -184,8 +184,8 @@ function toast(msg, kind) {
 
 /* -------------------------------------------------------------- navigation */
 
-const VIEWS = ['view-home', 'view-results', 'view-checkout', 'view-ticket', 'view-trips', 'view-schedules', 'view-track', 'view-cargo', 'view-help', 'view-account', 'view-ops', 'view-scan'];
-const TAB_OF = { 'view-results': 'view-home', 'view-checkout': 'view-home', 'view-ticket': 'view-trips', 'view-cargo': 'view-account', 'view-help': 'view-account', 'view-ops': 'view-account', 'view-scan': 'view-account' };
+const VIEWS = ['view-home', 'view-results', 'view-checkout', 'view-ticket', 'view-trips', 'view-schedules', 'view-track', 'view-cargo', 'view-help', 'view-account', 'view-ops', 'view-scan', 'view-driver'];
+const TAB_OF = { 'view-results': 'view-home', 'view-checkout': 'view-home', 'view-ticket': 'view-trips', 'view-cargo': 'view-account', 'view-help': 'view-account', 'view-ops': 'view-account', 'view-scan': 'view-account', 'view-driver': 'view-account' };
 let currentView = 'view-home';
 
 function guard(view) {
@@ -223,6 +223,7 @@ function refreshView() {
     if (currentView === 'view-account') renderAccount();
     if (currentView === 'view-ops') renderOps();
     if (currentView === 'view-scan') renderScan();
+    if (currentView === 'view-driver') renderDriver();
 }
 
 function navigateTo(view) {
@@ -393,7 +394,9 @@ function handleSearch(e) {
 
 /* ------------------------------------------------------- trips and seating */
 
-function tripsFor(origin, dest, dir) {
+// Friday and Sunday are peak (+10%), Tuesday and Wednesday off-peak (-10%). No date means the regular fare.
+const dayFactor = (iso) => { if (!iso) return 1; const d = new Date(iso + 'T00:00:00').getDay(); return d === 5 || d === 0 ? 1.1 : d === 2 || d === 3 ? 0.9 : 1; };
+function tripsFor(origin, dest, dir, date) {
     const r = ROUTES[dest], o = ORIGINS[origin];
     return DEPS[dir].map((d, i) => {
         const durMin = r.mins + (d.kind === 'std' ? 30 : 0) - o.offset;
@@ -401,7 +404,7 @@ function tripsFor(origin, dest, dir) {
         return {
             id: `${dir === 'out' ? 'SL' : 'DX'}-${r.no}0${i + 1}`, dir, kind: d.kind, className: BUS[d.kind].className,
             dep: fmtTime(depMin), arr: fmtTime(depMin + durMin), plus: Math.floor((depMin + durMin) / 1440), durMin,
-            fare: r[d.kind] + o.adj, from: dir === 'out' ? origin : dest, to: dir === 'out' ? dest : origin
+            fare: Math.round((r[d.kind] + o.adj) * dayFactor(date) / 10) * 10, from: dir === 'out' ? origin : dest, to: dir === 'out' ? dest : origin
         };
     });
 }
@@ -429,7 +432,8 @@ function renderResults() {
     const s = S.search;
     if (!s.dest) return;
     const dir = (S.leg === 0) !== !!s.rev ? 'out' : 'ret', date = S.leg === 0 ? s.date : s.ret;
-    S.trips = tripsFor(s.origin, s.dest, dir);
+    S.trips = tripsFor(s.origin, s.dest, dir, date);
+    renderFareCal(dir, date);
     const from = dir === 'out' ? s.origin : s.dest, to = dir === 'out' ? s.dest : s.origin;
 
     $('resStep').textContent = s.round ? t(S.leg === 0 ? 'Step 1 of 2 · Choose your outbound trip' : 'Step 2 of 2 · Choose your return trip') : '';
@@ -485,6 +489,7 @@ function renderResults() {
                     </div>
                     <div class="w-40 md:w-full text-center md:text-right">
                         <button ${dis ? 'disabled' : ''} onclick="openSeatSelection('${tr.id}')" class="${fc ? 'btn-red' : 'btn-blue'} w-full py-3 text-sm">${btnTxt}</button>
+                        ${dis && !closed ? (DB.waitlist.some(w => w.key === wlKey(tr.id, date)) ? '<div class="text-[11px] font-bold text-brand-blue mt-2"><i class="fa-solid fa-hourglass-half mr-1"></i>On the waitlist</div>' : `<button onclick="joinWaitlist('${tr.id}')" class="w-full mt-2 py-2 text-xs font-bold text-brand-blue border border-slate-200 rounded-xl hover:border-brand-blue">Join waitlist</button>`) : ''}
                         <div class="text-[10px] font-bold ${leftCls} mt-2 uppercase tracking-wide">${leftTxt}</div>
                     </div>
                 </div>
@@ -630,7 +635,7 @@ function renderCheckout() {
     S.promo = null; S.usePoints = false;
     $('promoInput').value = ''; $('promoMsg').textContent = ''; $('usePoints').checked = false;
     $('consent-privacy').checked = false;
-    $('addBag').value = '0'; $('addPet').checked = false; $('addIns').checked = false;
+    $('infants').value = '0'; $('addBag').value = '0'; $('addPet').checked = false; $('addIns').checked = false;
     const petOk = S.legs.every(l => l.kind === 'std');
     $('addPet').disabled = !petOk;
     $('addPetNote').textContent = petOk ? 'Small cat or dog up to 10 kg, in a closed carrier at your feet.' : 'Pets ride on Standard coaches only, so this is off for a First Class trip.';
@@ -686,7 +691,7 @@ function renderSummary() {
     const row = (label, val, cls) => `<div class="flex justify-between text-sm gap-3"><span class="text-slate-600 font-medium">${label}</span><span class="font-bold ${cls || 'text-slate-800'} whitespace-nowrap">${val}</span></div>`;
     $('chkBreakdown').innerHTML =
         row(`Base fare (${n} pax${L > 1 ? ' × 2 trips' : ''})`, formatPHP(x.base)) +
-        (x.disc ? row(`Senior / PWD / Student (${x.nDisc})`, '−' + formatPHP(x.disc), 'text-green-600') : '') +
+        (x.disc ? row(`Discounted fares (${x.nDisc})`, '−' + formatPHP(x.disc), 'text-green-600') : '') +
         (x.promo ? row(`Promo ${S.promo.code}`, '−' + formatPHP(x.promo), 'text-green-600') : '') +
         (x.door ? row(`Door seat premium (${x.door / DOOR_FEE}×)`, '+' + formatPHP(x.door), 'text-accent-gold') : '') +
         row(`Terminal fee${L > 1 ? ' (2 trips)' : ''}`, formatPHP(x.fee)) +
@@ -703,9 +708,9 @@ function renderSummary() {
 }
 
 function applyPromo() {
-    const code = $('promoInput').value.trim().toUpperCase(), msg = $('promoMsg');
+    const code = $('promoInput').value.trim().toUpperCase(), msg = $('promoMsg'), P = allPromos();
     if (!code) { S.promo = null; msg.textContent = ''; }
-    else if (PROMOS[code]) { S.promo = Object.assign({ code }, PROMOS[code]); msg.className = 'text-xs font-medium h-4 mt-2 text-green-600'; msg.textContent = `${code} applied: ${PROMOS[code].label}.`; }
+    else if (P[code] && P[code].active) { S.promo = Object.assign({ code }, P[code]); msg.className = 'text-xs font-medium h-4 mt-2 text-green-600'; msg.textContent = `${code} applied: ${P[code].label}.`; }
     else { S.promo = null; msg.className = 'text-xs font-medium h-4 mt-2 text-red-600'; msg.textContent = 'That code is not valid or has expired.'; }
     renderSummary();
 }
@@ -789,7 +794,7 @@ function finishPayment(ok) {
             createdAt: Date.now(), status: 'confirmed',
             contact: { mobile: $('chkMobile').value, email: $('chkEmail').value.trim() },
             pax: types.map((ty, i) => ({ name: $('paxName' + i).value.trim().toUpperCase(), type: ty, seats: S.assign.map(a => a[i]) })),
-            addons: { bagKg: x.bagKg, pet: x.pet > 0, ins: x.ins > 0 },
+            addons: { bagKg: x.bagKg, pet: x.pet > 0, ins: x.ins > 0 }, infants: parseInt($('infants').value) || 0,
             legs: S.legs.map(l => Object.assign({}, l)),
             method: methodMap[document.querySelector('input[name="payment"]:checked').value],
             total: x.total, pointsEarned: earned, pointsUsed: x.pts,
@@ -838,6 +843,7 @@ function renderTicket(b, heading, sub) {
     $('tktRef').innerText = b.ref;
     $('tktStatus').innerHTML = statusPill(b);
     $('tktPax').innerHTML = b.pax.map(p => `<div class="text-lg md:text-xl font-black text-slate-800 break-words">${esc(p.name)}${FARE_SHORT[p.type] ? ` <span class="pill bg-green-50 text-green-700 border-green-200 align-middle">${FARE_SHORT[p.type]}</span>` : ''}${p.seats ? ` <span class="text-sm font-bold text-brand-blue whitespace-nowrap align-middle">Seat ${p.seats.join(' / ')}</span>` : ''}</div>`).join('');
+    if (b.infants) $('tktPax').innerHTML += `<div class="text-sm text-slate-500">+ ${b.infants} infant${b.infants === 1 ? '' : 's'} on lap</div>`;
     $('tktLegs').innerHTML = b.legs.map((l, i) => `
         <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
             ${b.legs.length > 1 ? `<div class="text-[10px] font-black tracking-widest uppercase text-brand-red mb-2">${t(i === 0 ? 'Outbound' : 'Return')}</div>` : ''}
@@ -869,7 +875,7 @@ const qrPayload = (b) => { const base = qrBase(b); return `${base}|${qrSig(base)
 
 const SAMPLE_REF = 'SL-35948X';
 function sampleBooking() {
-    const date = addDays(todayLocal(), 3), tr = tripsFor('PITX, Manila', 'Jose Panganiban', 'out')[1];
+    const date = addDays(todayLocal(), 3), tr = tripsFor('PITX, Manila', 'Jose Panganiban', 'out', date)[1];
     return {
         ref: SAMPLE_REF, status: 'confirmed', sample: true, contact: { mobile: '09171234567', email: '' },
         pax: ['JUAN DELA CRUZ', 'ELENA DELA CRUZ', 'MARIA DELA CRUZ', 'ANA DELA CRUZ', 'LUIS DELA CRUZ'].map((name, i) => ({ name, type: 'regular', seats: [['02', '05', '06', '08', '09'][i]] })),
@@ -911,14 +917,15 @@ function renderTrips() {
                 <div class="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><i class="fa-solid fa-bus"></i></div>
                 <div class="min-w-0"><div class="font-bold text-slate-800 leading-tight">${esc(short(l.from))} to ${esc(short(l.to))}</div>
                 <div class="text-xs text-slate-500">${fmtDate(l.date)}, ${l.dep} · ${l.busClass} · Seats ${l.seats.join(', ')}</div></div></div>`).join('')}
-            ${b.status === 'cancelled' ? `<p class="text-xs text-slate-500 pt-2 border-t border-slate-100">Refund of ${formatPHP(b.refund || 0)} to ${b.method}, 3 to 5 banking days.</p>` : ''}
+            ${b.status === 'cancelled' ? `<p class="text-xs text-slate-500 pt-2 border-t border-slate-100">${b.refundStatus === 'pending' ? `Refund of ${formatPHP(b.refund || 0)} is waiting for approval.` : `Refund of ${formatPHP(b.refund || 0)} sent to ${b.method}.`}</p>` : ''}
             <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3 text-xs">
                 <button onclick="viewTicket('${b.ref}')" class="btn-blue py-2.5 col-span-2 sm:col-span-1">${t('View Ticket')}</button>
-                <button onclick="rebookTrip('${b.ref}')" ${canChange ? '' : 'disabled'} class="btn-ghost py-2.5">${t('Rebook')}</button>
+                ${up ? `<button onclick="rebookTrip('${b.ref}')" ${canChange ? '' : 'disabled'} class="btn-ghost py-2.5">${t('Rebook')}</button>
                 <button onclick="cancelTrip('${b.ref}')" ${canChange ? '' : 'disabled'} class="btn-ghost py-2.5 !text-brand-red">${t('Cancel')}</button>
-                <button onclick="downloadICS('${b.ref}')" ${up ? '' : 'disabled'} class="btn-ghost py-2.5"><i class="fa-regular fa-calendar-plus"></i> Calendar</button>
+                <button onclick="downloadICS('${b.ref}')" ${up ? '' : 'disabled'} class="btn-ghost py-2.5"><i class="fa-regular fa-calendar-plus"></i> Calendar</button>` : ''}
                 <button onclick="shareTrip('${b.ref}')" class="btn-ghost py-2.5"><i class="fa-solid fa-share-nodes"></i> ${t('Share')}</button>
             </div>
+            ${!up && b.status !== 'cancelled' ? (b.rating ? `<p class="text-xs text-slate-500 mt-3">Your rating: <span class="text-accent-gold">${'<i class="fa-solid fa-star"></i>'.repeat(b.rating.stars)}</span></p>` : `<button onclick="rateTrip('${b.ref}')" class="w-full mt-3 py-2.5 text-xs font-bold rounded-xl bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"><i class="fa-regular fa-star mr-1"></i> Rate this trip</button>`) : ''}
             ${up && !canChange ? `<p class="text-[11px] text-slate-500 mt-2">Changes close ${CHANGE_CUTOFF_H} hours before departure.</p>` : ''}
         </div>`;
     }).join('') : `
@@ -934,7 +941,7 @@ function renderTrips() {
 
     $('parcelsHead').classList.toggle('hidden', !DB.parcels.length);
     $('parcelsList').innerHTML = DB.parcels.map(p => `
-        <div class="card p-5 flex items-center gap-4">
+        <div class="card p-5 flex flex-wrap items-center gap-x-4 gap-y-2">
             <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg shrink-0"><i class="fa-solid fa-box"></i></div>
             <div class="min-w-0 flex-1"><div class="font-mono font-black text-brand-blue">${p.ref}</div>
             <div class="text-sm font-bold text-slate-800">${esc(p.from)} to ${esc(p.to)}</div>
@@ -978,6 +985,7 @@ function rebookTrip(ref) {
             if (mapped.includes(null)) { msg.textContent = 'That bus is full on the new date. Pick another date.'; return false; }
             b.pax.forEach(p => { if (p.seats) { const k = old.indexOf(p.seats[i]); if (k > -1) p.seats[i] = mapped[k]; } });
             l.seats = mapped.slice().sort(); l.date = d; l.boarded = null;
+            setTimeout(checkWaitlist, 0);
             b.total += fee; b.rebooked = true;
             save(); renderTrips();
             if (S.ticket && S.ticket.ref === b.ref && currentView === 'view-ticket') viewTicket(b.ref);
@@ -996,10 +1004,10 @@ function cancelTrip(ref) {
                <p>It goes back to ${b.method} in 3 to 5 banking days. Your seats are released right away and this cannot be undone.</p>`,
         okText: 'Cancel booking', cancelText: 'Keep my trip',
         onOk: () => {
-            b.status = 'cancelled'; b.refund = refund;
+            b.status = 'cancelled'; b.refund = refund; b.refundStatus = 'pending';
             DB.points = Math.max(0, DB.points - (b.pointsEarned || 0)) + (b.pointsUsed || 0);
-            save(); renderTrips();
-            toast(`Booking cancelled. ${formatPHP(refund)} will be refunded.`);
+            save(); checkWaitlist(); renderTrips();
+            toast(`Booking cancelled. ${formatPHP(refund)} will be refunded once approved.`);
         }
     });
 }
@@ -1223,15 +1231,21 @@ function genPassenger(tripId, date, seat) {
 function opsTrips() {
     const date = $('opsDate').value || todayLocal(), dir = $('opsDir').value, isToday = date === todayLocal();
     const out = [];
-    Object.keys(ROUTES).forEach(dest => tripsFor('PITX, Manila', dest, dir).forEach(tr => {
+    Object.keys(ROUTES).forEach(dest => tripsFor('PITX, Manila', dest, dir, date).forEach(tr => {
         const sold = occupied(tr.id, tr.kind, date).size, total = BUS[tr.kind].total;
         const live = isToday ? FIDS.find(f => f.id === tr.id) : null;
-        out.push({ tr, date, isToday, sold, total, rev: sold * tr.fare, status: live ? live.status : 'SCHEDULED', eta: live ? live.eta : tr.dep });
+        const st = DB.tripState[tripKey(tr.id, date)];
+        out.push({ tr, date, isToday, sold, total, rev: sold * tr.fare, crew: assignFor(tr, date), head: st ? st.head : null, status: st ? (st.arrived ? 'ARRIVED' : 'DEPARTED') : live ? live.status : 'SCHEDULED', eta: live ? live.eta : tr.dep });
     }));
     return out;
 }
 
 function renderOps() {
+    const signed = !!DB.staff;
+    $('opsGateWrap').classList.toggle('hidden', signed); $('opsBody').classList.toggle('hidden', !signed);
+    if (!signed) { renderGate(); return; }
+    $('opsRole').textContent = ROLES[DB.staff.role][0];
+    document.querySelectorAll('[data-role-only]').forEach(el => el.classList.toggle('hidden', !isRole(...el.dataset.roleOnly.split(' '))));
     const rows = opsTrips();
     const sold = rows.reduce((a, r) => a + r.sold, 0), total = rows.reduce((a, r) => a + r.total, 0);
     const sales = opsSales(rows), rev = sales.total;
@@ -1242,12 +1256,12 @@ function renderOps() {
         kpi('Seats sold', `${sold} / ${total}`, `${Math.round(sold / total * 100)}% load factor`) +
         kpi('Fare revenue', formatPHP(rev).replace('.00', ''), 'After discounts, before fees') +
         kpi('App bookings', app, 'Made on this device');
-    const stCls = { 'SCHEDULED': 'bg-slate-100 text-slate-600 border-slate-200', 'ON TIME': 'bg-blue-50 text-blue-700 border-blue-200', 'BOARDING': 'bg-green-50 text-green-700 border-green-200', 'DELAYED': 'bg-amber-50 text-amber-700 border-amber-200', 'EARLY': 'bg-purple-50 text-purple-700 border-purple-200' };
+    const stCls = { 'DEPARTED': 'bg-green-50 text-green-700 border-green-200', 'ARRIVED': 'bg-slate-100 text-slate-600 border-slate-200', 'SCHEDULED': 'bg-slate-100 text-slate-600 border-slate-200', 'ON TIME': 'bg-blue-50 text-blue-700 border-blue-200', 'BOARDING': 'bg-green-50 text-green-700 border-green-200', 'DELAYED': 'bg-amber-50 text-amber-700 border-amber-200', 'EARLY': 'bg-purple-50 text-purple-700 border-purple-200' };
     $('opsTrips').innerHTML = rows.map(r => {
         const pct = Math.round(r.sold / r.total * 100);
         return `<tr class="border-b border-slate-100 ${S.manifest === r.tr.id ? 'bg-blue-50' : ''}">
             <td class="p-3 font-mono font-bold text-brand-blue whitespace-nowrap">${r.tr.id}</td>
-            <td class="p-3 font-bold text-slate-800 whitespace-nowrap">${esc(short(r.tr.from))} ➔ ${esc(short(r.tr.to))}</td>
+            <td class="p-3 whitespace-nowrap"><div class="font-bold text-slate-800">${esc(short(r.tr.from))} ➔ ${esc(short(r.tr.to))}</div><div class="text-xs text-slate-500">Bus ${r.crew.bus} · ${r.crew.driver}${r.head !== null ? ` · ${r.head} on board` : ''}</div></td>
             <td class="p-3 whitespace-nowrap">${r.tr.dep}${r.status === 'DELAYED' ? `<div class="text-xs text-amber-700 font-bold">now ${r.eta}</div>` : ''}</td>
             <td class="p-3 whitespace-nowrap">${r.tr.kind === 'fc' ? 'First Class' : 'Standard'}</td>
             <td class="p-3"><div class="flex items-center gap-2 whitespace-nowrap"><div class="w-20 h-2 rounded-full bg-slate-200 overflow-hidden"><div class="h-full ${pct >= 85 ? 'bg-brand-red' : pct >= 60 ? 'bg-amber-500' : 'bg-green-500'}" style="width:${pct}%"></div></div><span class="font-bold tabular-nums">${r.sold}/${r.total}</span></div></td>
@@ -1255,11 +1269,12 @@ function renderOps() {
             <td class="p-3"><span class="pill ${stCls[r.status]} whitespace-nowrap">${r.status}</span></td>
             <td class="p-3 whitespace-nowrap text-right">
                 <button onclick="opsManifest('${r.tr.id}')" class="btn-ghost px-3 py-2 text-xs">Manifest</button>
-                <button onclick="opsDelay('${r.tr.id}')" ${r.isToday ? '' : 'disabled'} class="btn-ghost px-3 py-2 text-xs !text-amber-700" title="Marks the bus 15 minutes late on the live board and alerts its passengers">+15 min</button>
+                <button onclick="opsDelay('${r.tr.id}')" ${r.isToday && isRole('dispatcher') ? '' : 'disabled'} class="btn-ghost px-3 py-2 text-xs !text-amber-700" title="Marks the bus 15 minutes late on the live board and alerts its passengers">+15 min</button>
             </td></tr>`;
     }).join('');
     renderSalesChart(sales);
     renderOpsAdmin();
+    renderOpsQueues();
     renderManifest();
 }
 
@@ -1285,6 +1300,11 @@ function renderManifest() {
             <p class="text-xs text-slate-500">${fmtDate(date)}, ${tr.dep} · ${tr.className} · ${list.length} of ${r.total} seats · ${boarded} boarded</p></div>
             <button onclick="S.manifest = null; renderOps()" class="btn-ghost px-4 py-2 text-xs">Close</button>
         </div>
+        <form class="assign px-5 py-3 border-b border-slate-200 flex flex-wrap items-end gap-3" onsubmit="event.preventDefault(); opsAssign();">
+            <div><label for="asBus" class="lbl">Bus</label><select id="asBus" class="inp !bg-white !py-2">${FLEET[tr.kind].map(x => `<option${x === r.crew.bus ? ' selected' : ''}>${x}</option>`).join('')}</select></div>
+            <div><label for="asDriver" class="lbl">Driver</label><select id="asDriver" class="inp !bg-white !py-2">${DRIVERS.map(x => `<option${x === r.crew.driver ? ' selected' : ''}>${x}</option>`).join('')}</select></div>
+            <button class="btn-ghost px-4 py-2 text-sm">Assign</button>
+        </form>
         <div class="overflow-x-auto"><table class="w-full text-sm text-left">
             <thead><tr class="text-[10px] uppercase tracking-widest text-slate-400"><th class="p-3">Seat</th><th class="p-3">Passenger</th><th class="p-3">Booking</th><th class="p-3">Fare</th><th class="p-3">Sold via</th><th class="p-3">Boarded</th></tr></thead>
             <tbody>${list.map(x => `<tr class="border-t border-slate-100 ${x.sample ? '' : x.channel === 'App' ? 'bg-green-50/60' : 'bg-amber-50/70'}">
@@ -1292,10 +1312,10 @@ function renderManifest() {
                 <td class="p-3 font-bold text-slate-800 whitespace-nowrap" data-notr>${esc(x.name)}</td>
                 <td class="p-3 font-mono text-xs whitespace-nowrap">${x.ref}</td>
                 <td class="p-3 whitespace-nowrap">${FARE_SHORT[x.type] ? `<span class="pill bg-green-50 text-green-700 border-green-200">${FARE_SHORT[x.type]} · check ID</span>` : 'Regular'}</td>
-                <td class="p-3 whitespace-nowrap">${x.channel}</td>
+                <td class="p-3 whitespace-nowrap">${x.channel}${!x.sample && x.channel === 'Counter' && isRole('dispatcher', 'counter') && !x.boarded ? ` <button onclick="opsVoid('${x.ref}')" class="text-xs font-bold text-brand-red underline ml-1">Void</button>` : ''}</td>
                 <td class="p-3">${x.boarded ? '<i class="fa-solid fa-circle-check text-green-600"></i> Yes' : '<span class="text-slate-400">Not yet</span>'}</td></tr>`).join('')}</tbody>
         </table></div>
-        <form class="px-5 py-4 border-t border-slate-200 bg-slate-50 grid grid-cols-2 md:grid-cols-12 gap-3 items-end" onsubmit="event.preventDefault(); opsSell();">
+        <form class="sell px-5 py-4 border-t border-slate-200 bg-slate-50 grid grid-cols-2 md:grid-cols-12 gap-3 items-end" onsubmit="event.preventDefault(); opsSell();">
             <div class="col-span-2 md:col-span-12 font-black text-slate-800 text-sm"><i class="fa-solid fa-cash-register text-brand-blue mr-2"></i>Sell a seat at the counter</div>
             <div class="col-span-2 md:col-span-5"><label for="ctName" class="lbl">Passenger name</label><input id="ctName" required minlength="2" maxlength="60" class="inp !bg-white !py-2.5"></div>
             <div class="md:col-span-3"><label for="ctType" class="lbl">Fare type</label><select id="ctType" class="inp !bg-white !py-2.5">${Object.entries(FARE_TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
@@ -1303,6 +1323,8 @@ function renderManifest() {
             <div class="col-span-2 md:col-span-2"><button class="btn-blue w-full py-2.5 text-sm" ${free.length ? '' : 'disabled'}>${free.length ? 'Sell (cash)' : 'Bus is full'}</button></div>
         </form>
         <p class="px-5 py-3 text-xs text-slate-500 border-t border-slate-100">Green rows were booked in this app, amber rows were sold at this counter. Both take the seat off the passenger seat map at once. The other names are generated samples.</p>`;
+    if (!isRole('dispatcher', 'counter')) { const f = box.querySelector('form.sell'); if (f) f.remove(); }
+    if (!isRole('dispatcher')) { const f = box.querySelector('form.assign'); if (f) f.remove(); }
 }
 
 /* ---------------------------------------------------------- ticket scanner */
@@ -1429,7 +1451,8 @@ function renderSalesChart(sales) {
             <div><h3 class="font-black text-slate-800 mb-3">Where the seats were sold</h3>
                 <div class="h-5 flex rounded overflow-hidden mb-3">${stack}</div>
                 <div class="space-y-1.5">${legend}</div></div>
-        </div>`;
+        </div>
+        <button onclick="opsExport()" class="btn-ghost px-4 py-2.5 text-sm mt-5"><i class="fa-solid fa-file-arrow-down mr-2"></i>Download the day's sales (CSV)</button>`;
 }
 
 function opsSell() {
@@ -1552,7 +1575,7 @@ function loadSample(quiet) {
     let pick = null;   // the next departure at least 5 hours away, so rebooking, cancelling and the scanner all work
     for (let d = 0; d < 3 && !pick; d++) {
         const date = addDays(today, d);
-        const tr = tripsFor('PITX, Manila', dest, 'out').find(x => depDate(date, x.dep).getTime() - now > 5 * 3600000 && BUS[x.kind].total - occupied(x.id, x.kind, date).size >= 2);
+        const tr = tripsFor('PITX, Manila', dest, 'out', date).find(x => depDate(date, x.dep).getTime() - now > 5 * 3600000 && BUS[x.kind].total - occupied(x.id, x.kind, date).size >= 2);
         if (tr) pick = { tr, date };
     }
     if (!pick) return null;
@@ -1565,7 +1588,7 @@ function loadSample(quiet) {
         addons: { bagKg: 0, pet: false, ins: true }, legs: [mk(pick.tr, pick.date, free)], method: 'GCash',
         total: Math.round(pick.tr.fare * 2 - pick.tr.fare * DISCOUNT) + TERMINAL_FEE + INS_FEE * 2, pointsEarned: 0, pointsUsed: 0, auth: '09:41:07'
     };
-    const oldTr = tripsFor('PITX, Manila', 'Naga, Camarines Sur', 'ret')[1], oldDate = addDays(today, -9);
+    const oldDate = addDays(today, -9), oldTr = tripsFor('PITX, Manila', 'Naga, Camarines Sur', 'ret', oldDate)[1];
     const done = {
         ref: ref(), demo: true, createdAt: now - 12 * 86400000, status: 'confirmed', contact: { mobile: '09171234567', email: '' },
         pax: [{ name: 'JUAN DELA CRUZ', type: 'regular', seats: ['07'] }], addons: { bagKg: 0, pet: false, ins: false },
@@ -1634,7 +1657,7 @@ function renderMap() {
             <title>${b.tr.id} · ${short(b.tr.from)} to ${short(b.tr.to)} · arrives ${b.eta}${b.late ? ' · delayed' : ''}</title>
             <circle cx="${b.x}" cy="${b.y}" r="16" fill="transparent"/>${sel ? `<circle cx="${b.x}" cy="${b.y}" r="12" fill="none" stroke="#ffffff" stroke-width="2"/>` : ''}${shape}</g>`;
     }).join('');
-    box.innerHTML = `<svg viewBox="0 0 800 290" class="w-full h-auto" role="img" aria-label="Route map from Manila to Bicol with buses now on the road">${lines}${stops}${marks}</svg>`;
+    box.innerHTML = `<svg viewBox="0 0 800 290" class="w-full h-auto min-w-[620px]" role="img" aria-label="Route map from Manila to Bicol with buses now on the road">${lines}${stops}${marks}</svg>`;
     $('mapCount').textContent = buses.length ? `${buses.length} bus${buses.length === 1 ? '' : 'es'} on the road` : 'No buses on the road right now';
     const b = buses.find(x => x.tr.id === S.mapBus);
     $('mapInfo').innerHTML = b
@@ -1693,7 +1716,8 @@ async function tourGo(i) {
     const st = TOUR[i];
     $('mobileMenu').classList.add('hidden');
     if (!st.keepModal) openModals().forEach(m => closeModal(m.id));
-    $('tourCard').classList.remove('hidden');
+    $('tourCard').classList.remove('hidden'); $('chatWrap').classList.add('hidden'); toggleChat(false);
+    if (!DB.staff || !isRole('dispatcher')) { DB.staff = { role: 'dispatcher' }; save(); }
     $('tourStep').textContent = `${i + 1} of ${TOUR.length}`;
     $('tourTitle').textContent = st.title; $('tourText').textContent = st.text;
     $('tourBack').disabled = i === 0;
@@ -1707,9 +1731,296 @@ async function tourGo(i) {
 function tourEnd() {
     tourClear();
     S.tour = null;
-    $('tourCard').classList.add('hidden');
+    $('tourCard').classList.add('hidden'); $('chatWrap').classList.remove('hidden');
     openModals().forEach(m => closeModal(m.id));
     navigateTo('view-home');
+}
+
+/* ------------------------------------------------ fare calendar, waitlist */
+
+function setSearchDate(iso) {
+    const s = S.search;
+    if (S.leg === 0) { s.date = iso; $('date').value = iso; if (s.round && s.ret < iso) { s.ret = iso; $('retDate').value = iso; } }
+    else { s.ret = iso; $('retDate').value = iso; }
+    renderResults();
+}
+// A week of dates around the one searched, each with its lowest fare, so the cheaper days are easy to spot.
+function renderFareCal(dir, date) {
+    const s = S.search, floor = S.leg === 0 ? todayLocal() : s.date;
+    let start = addDays(date, -3); if (start < floor) start = floor;
+    const days = Array.from({ length: 7 }, (_, i) => addDays(start, i)).map(iso => {
+        const open = tripsFor(s.origin, s.dest, dir, iso).filter(tr => depDate(iso, tr.dep).getTime() - Date.now() >= CLOSE_MIN * 60000 && BUS[tr.kind].total - occupied(tr.id, tr.kind, iso).size >= s.pax);
+        return { iso, min: open.length ? Math.min(...open.map(x => x.fare)) : null };
+    });
+    const low = Math.min(...days.filter(d => d.min !== null).map(d => d.min));
+    $('fareCal').innerHTML = days.map(d => {
+        const dt = new Date(d.iso + 'T00:00:00'), on = d.iso === date, best = d.min !== null && d.min === low;
+        return `<button onclick="setSearchDate('${d.iso}')" aria-pressed="${on}" class="shrink-0 w-[4.6rem] rounded-xl border px-2 py-2 text-center ${on ? 'bg-brand-blue text-white border-brand-blue shadow-md' : 'bg-white text-slate-700 border-slate-200 hover:border-brand-blue'}">
+            <div class="text-[10px] font-bold uppercase tracking-widest ${on ? 'text-slate-300' : 'text-slate-400'}" data-notr>${dt.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+            <div class="text-lg font-black leading-tight" data-notr>${dt.getDate()}</div>
+            <div class="text-[11px] font-bold ${d.min === null ? (on ? 'text-slate-300' : 'text-slate-400') : best ? (on ? 'text-green-300' : 'text-green-600') : ''}">${d.min === null ? '—' : formatPHP(d.min).replace('.00', '')}</div>
+        </button>`;
+    }).join('');
+}
+
+const wlKey = (tripId, date) => `${tripId}|${date}`;
+function joinWaitlist(tripId) {
+    const tr = S.trips.find(x => x.id === tripId); if (!tr) return;
+    const date = S.leg === 0 ? S.search.date : S.search.ret;
+    openConfirm({
+        title: 'Join the waitlist',
+        body: `<p>Bus ${tr.id}, ${esc(short(tr.from))} to ${esc(short(tr.to))} on ${fmtDate(date)} does not have ${S.search.pax} seats free. We will alert you here the moment enough seats open up.</p>
+               <div><label class="lbl" for="wlMobile">Mobile number for the alert</label><input id="wlMobile" class="inp" inputmode="numeric" maxlength="11" placeholder="09XXXXXXXXX" value="${DB.profile ? esc(DB.profile.mobile) : ''}"></div>
+               <p class="text-xs text-red-600 font-medium min-h-[1rem]" id="wlMsg"></p>`,
+        okText: 'Join waitlist', cancelText: 'Back',
+        onOk: () => {
+            const mobile = $('wlMobile').value.replace(/\D/g, '');
+            if (!/^09\d{9}$/.test(mobile)) { $('wlMsg').textContent = 'Enter an 11-digit mobile number starting with 09.'; return false; }
+            DB.waitlist.push({ key: wlKey(tr.id, date), tripId: tr.id, kind: tr.kind, date, pax: S.search.pax, mobile, route: `${short(tr.from)} to ${short(tr.to)}`, ts: Date.now() });
+            save(); renderResults();
+            toast('You are on the waitlist. We will alert you if seats open up.');
+        }
+    });
+}
+function checkWaitlist() {
+    DB.waitlist = DB.waitlist.filter(w => {
+        const free = BUS[w.kind].total - occupied(w.tripId, w.kind, w.date).size;
+        if (free < w.pax) return true;
+        notify('Seats opened up', `Bus ${w.tripId}, ${w.route} on ${fmtDate(w.date)} now has ${free} seats. Book soon to keep your place.`, `wl-${w.key}-${w.ts}`);
+        return false;
+    });
+    save();
+}
+
+/* ----------------------------------------------- group requests, ratings */
+
+function submitGroup() {
+    const g = { ref: 'GR-' + Math.floor(Math.random() * 90000 + 10000), name: $('grName').value.trim(), mobile: $('grMobile').value, date: $('grDate').value, pax: parseInt($('grPax').value), route: $('grRoute').value, notes: $('grNotes').value.trim(), ts: Date.now(), status: 'new' };
+    DB.groups.unshift(g); save();
+    $('groupForm').reset();
+    closeModal('groupModal');
+    notify('Group request received', `${g.ref}: ${g.pax} passengers to ${short(g.route)} on ${fmtDate(g.date)}. Our team will call ${g.mobile} within one business day with a quote.`, 'grp-' + g.ref, true);
+    toast(`Group request ${g.ref} sent. We will call you with a quote.`);
+}
+
+function rateTrip(ref) {
+    const b = findBooking(ref); if (!b) return;
+    S.rateRef = ref; S.rateStars = 0;
+    $('rateSub').textContent = `${short(b.legs[0].from)} to ${short(b.legs[0].to)}, ${fmtDate(b.legs[0].date)}`;
+    $('rateText').value = ''; $('rateMsg').textContent = '';
+    setStars(0);
+    openModal('rateModal');
+}
+function setStars(n) {
+    S.rateStars = n;
+    document.querySelectorAll('#rateStars button').forEach((b, i) => { b.querySelector('i').className = (i < n ? 'fa-solid text-accent-gold' : 'fa-regular text-slate-300') + ' fa-star text-3xl'; b.setAttribute('aria-pressed', i < n); });
+}
+function submitRating() {
+    if (!S.rateStars) { $('rateMsg').textContent = 'Tap a star to rate the trip.'; return; }
+    const b = findBooking(S.rateRef); if (!b) return;
+    b.rating = { stars: S.rateStars, text: $('rateText').value.trim(), ts: Date.now() };
+    save(); closeModal('rateModal'); renderTrips();
+    toast('Thank you. Your rating was sent to the operator.');
+}
+
+/* --------------------------------------------------------------- help chat */
+
+const destIn = (q) => Object.keys(ROUTES).find(d => q.includes(short(d).toLowerCase()) || (d === 'Jose Panganiban' && q.includes('panganiban')));
+const CHAT = [
+    { k: ['schedule', 'iskedyul', 'departure', 'what time', 'anong oras', 'biyahe papunta', 'trips to'], a: (q) => {
+        const d = destIn(q); if (!d) return ['Which destination? We run daily trips to Daet, Naga, Jose Panganiban and Pio Duran.', [['See all schedules', "navigateTo('view-schedules')"]]];
+        return [`Daily departures from PITX to ${short(d)}:\n` + tripsFor('PITX, Manila', d, 'out').map(t => `${t.dep} · ${t.className} · ${formatPHP(t.fare).replace('.00', '')}`).join('\n'), [['Book this route', `chatBook('${d}')`], ['See all schedules', "navigateTo('view-schedules')"]]];
+    } },
+    { k: ['fare', 'pamasahe', 'magkano', 'how much', 'price', 'presyo'], a: (q) => {
+        const d = destIn(q); if (!d) return ['Fares from Manila start at ' + formatPHP(Math.min(...Object.values(ROUTES).map(r => r.std))).replace('.00', '') + '. Tell me the destination for the exact fare.', [['See all fares', "navigateTo('view-schedules')"]]];
+        return [`Manila to ${short(d)}: Standard ${formatPHP(ROUTES[d].std).replace('.00', '')}, First Class ${formatPHP(ROUTES[d].fc).replace('.00', '')}. Fridays and Sundays cost 10% more, Tuesdays and Wednesdays 10% less.`, [['Book this route', `chatBook('${d}')`]]];
+    } },
+    { k: ['refund', 'cancel', 'kansela'], a: () => [FAQ[4][1], [['Open My Trips', "navigateTo('view-trips')"]]] },
+    { k: ['rebook', 'change date', 'reschedule', 'palit', 'ilipat'], a: () => [FAQ[3][1], [['Open My Trips', "navigateTo('view-trips')"]]] },
+    { k: ['baggage', 'bagahe', 'luggage', 'maleta', 'kilo'], a: () => ['Free: one checked bag up to 20 kg in the hold, plus one small hand-carry on board. Excess baggage: ₱20 per kg, paid at the counter. Single pieces over 30 kg travel as cargo.', [['Baggage rules', "navigateTo('view-help')"]]] },
+    { k: ['pet', 'alaga', 'dog', 'aso', 'cat', 'pusa'], a: () => ['Small cats and dogs (up to 10 kg) are welcome on Standard coaches, in a closed, leak-proof carrier. One pet per passenger, ₱150 per trip. The carrier stays at your feet, not on a seat.', [['Pet rules', "navigateTo('view-help')"]]] },
+    { k: ['senior', 'pwd', 'student', 'estudyante', 'discount', 'diskwento'], a: () => [FAQ[2][1], []] },
+    { k: ['child', 'bata', 'infant', 'baby', 'sanggol', 'kids'], a: () => [FAQ[6][1], []] },
+    { k: ['print', 'qr', 'e-ticket', 'eticket', 'ticket'], a: () => [FAQ[1][1], [['Open My Trips', "navigateTo('view-trips')"]]] },
+    { k: ['early', 'check in', 'check-in', 'gaano kaaga', 'arrive at the terminal'], a: () => [FAQ[0][1], []] },
+    { k: ['track', 'late', 'delay', 'nasaan', 'where is', 'antala', 'location'], a: () => ['Live Status shows every bus on the road and its arrival time. Tap the bell on a bus to be alerted if it runs late.', [['Open Live Status', "navigateTo('view-track')"]]] },
+    { k: ['cargo', 'padala', 'parcel', 'package', 'send'], a: () => ['Parcels up to 50 kg travel on the next bus. Up to 3 kg is ₱150, up to 10 kg ₱300, up to 20 kg ₱500. Drop off at the terminal counter one hour before departure.', [['Book a drop-off', "navigateTo('view-cargo')"]]] },
+    { k: ['point', 'loyalty', 'suki', 'reward'], a: () => [FAQ[7][1], [['Open Account', "navigateTo('view-account')"]]] },
+    { k: ['group', 'grupo', 'charter', 'field trip', 'excursion'], a: () => ['For 11 or more passengers, send a group request and our team will call you with a quote within one business day.', [['Request a group booking', "openModal('groupModal')"]]] },
+    { k: ['pay', 'gcash', 'maya', 'card', 'bayad', 'qr ph'], a: () => ['You can pay with GCash, Maya, QR Ph, or a credit or debit card. Your seats are held for 10 minutes while you pay.', []] },
+    { k: ['weather', 'typhoon', 'bagyo', 'storm'], a: () => [FAQ[5][1], [['Travel advisories', "navigateTo('view-help')"]]] },
+    { k: ['agent', 'human', 'tao', 'hotline', 'contact', 'call', 'tawag'], a: () => ['You can reach our team any time through the hotline or Messenger. The numbers are on the Help page.', [['Contact details', "navigateTo('view-help')"]]] },
+    { k: ['hello', 'hi ', 'hey', 'kumusta', 'good morning', 'good evening', 'magandang'], a: () => ['Hello! Ask me about schedules, fares, baggage, pets, discounts, refunds, rebooking, cargo or tracking a bus.', []] }
+];
+function chatBook(dest) { toggleChat(false); prefillSearch('PITX, Manila', dest, false, false); }
+function chatAnswer(text) {
+    const q = ' ' + text.toLowerCase() + ' ';
+    const hit = CHAT.find(c => c.k.some(k => q.includes(k)));
+    return hit ? hit.a(q) : ['I can help with schedules, fares, baggage, pets, discounts, refunds, rebooking, cargo and tracking a bus. For anything else, our team is on the hotline and Messenger.', [['Contact details', "navigateTo('view-help')"]]];
+}
+function chatAdd(who, text, actions) {
+    const log = $('chatLog'), row = document.createElement('div');
+    row.className = 'flex ' + (who === 'me' ? 'justify-end' : 'justify-start');
+    const bubble = document.createElement('div');
+    bubble.className = 'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-line ' + (who === 'me' ? 'bg-brand-blue text-white rounded-br-md' : 'bg-slate-100 text-slate-800 rounded-bl-md');
+    if (who === 'me') bubble.setAttribute('data-notr', '');
+    text.split('\n').forEach((line, i) => { if (i) bubble.appendChild(document.createElement('br')); bubble.appendChild(document.createTextNode(line)); });
+    (actions || []).forEach(([label, js]) => {
+        const b = document.createElement('button');
+        b.className = 'block mt-2 text-xs font-bold text-brand-blue bg-white border border-slate-200 rounded-full px-3 py-1.5 hover:border-brand-blue';
+        b.textContent = label; b.setAttribute('onclick', js + (js.startsWith('navigateTo') || js.startsWith('openModal') ? '; toggleChat(false)' : ''));
+        bubble.appendChild(b);
+    });
+    row.appendChild(bubble); log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+}
+function chatSend(text) {
+    text = (text || $('chatInput').value).trim(); if (!text) return;
+    $('chatInput').value = '';
+    chatAdd('me', text);
+    const [answer, actions] = chatAnswer(text);
+    setTimeout(() => chatAdd('bot', answer, actions), 350);
+}
+function toggleChat(open) {
+    const p = $('chatPanel'), show = open === undefined ? p.classList.contains('hidden') : open;
+    p.classList.toggle('hidden', !show);
+    $('chatFab').setAttribute('aria-expanded', show);
+    if (show) { if (!$('chatLog').children.length) chatAdd('bot', 'Hello! Ask me about schedules, fares, baggage, pets, discounts, refunds, rebooking, cargo or tracking a bus.'); $('chatInput').focus(); }
+}
+
+/* ------------------------------------------- staff roles, buses, drivers */
+
+const ROLES = {
+    dispatcher: ['Dispatcher', 'fa-tower-broadcast', 'Everything: trips, delays, fares, advisories, refunds, promos, buses and drivers.'],
+    counter: ['Counter staff', 'fa-cash-register', 'Sells seats for cash and reads the passenger manifest.'],
+    gate: ['Gate staff', 'fa-qrcode', 'Scans tickets and boards passengers.'],
+    driver: ['Driver', 'fa-id-badge', 'Sees assigned trips, starts the trip and confirms the head count.']
+};
+const DRIVERS = ['R. Dela Peña', 'M. Villareal', 'J. Abella', 'E. Sarmiento', 'A. Buenaflor', 'C. Obias', 'N. Quiñones', 'B. Ibasco'];
+const FLEET = { fc: ['1201', '1202', '1203', '1204', '1205', '1206'], std: ['2201', '2202', '2203', '2204', '2205', '2206', '2207', '2208'] };
+const tripKey = (id, date) => `${id}|${date}`;
+function assignFor(tr, date) {
+    const k = tripKey(tr.id, date);
+    if (DB.assign[k]) return DB.assign[k];
+    const r = rng(hashStr(k + '|crew'));
+    return { bus: FLEET[tr.kind][Math.floor(r() * FLEET[tr.kind].length)], driver: DRIVERS[Math.floor(r() * DRIVERS.length)] };
+}
+function staffSignIn(role) {
+    DB.staff = { role }; save();
+    if (role === 'gate') navigateTo('view-scan'); else if (role === 'driver') navigateTo('view-driver'); else renderOps();
+    toast(`Signed in as ${ROLES[role][0]}`);
+}
+function staffSwitch() { DB.staff = null; save(); S.manifest = null; navigateTo('view-ops'); }
+const isRole = (...r) => !!DB.staff && r.includes(DB.staff.role);
+function renderGate() {
+    $('opsGate').innerHTML = Object.entries(ROLES).map(([k, v]) => `
+        <button onclick="staffSignIn('${k}')" class="card p-5 text-left hover:border-brand-blue hover:shadow-md transition-all flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center text-xl shrink-0"><i class="fa-solid ${v[1]}"></i></div>
+            <div><div class="font-black text-slate-800">${v[0]}</div><div class="text-sm text-slate-500">${v[2]}</div></div>
+        </button>`).join('');
+}
+function opsAssign() {
+    const r = opsTrips().find(x => x.tr.id === S.manifest); if (!r) return;
+    DB.assign[tripKey(r.tr.id, r.date)] = { bus: $('asBus').value, driver: $('asDriver').value };
+    save(); if (document.activeElement) document.activeElement.blur(); renderOps();
+    toast(`Bus ${$('asBus').value} and ${$('asDriver').value} assigned to ${r.tr.id}.`);
+}
+function opsVoid(ref) {
+    const i = DB.counter.findIndex(x => x.ref === ref); if (i < 0) return;
+    const c = DB.counter.splice(i, 1)[0]; save();
+    checkWaitlist(); renderOps();
+    toast(`Counter ticket ${c.ref} voided. Seat ${c.seat} is free again.`);
+}
+
+function renderDriver() {
+    const sel = $('drvName');
+    if (!sel.options.length) sel.innerHTML = DRIVERS.map(d => `<option>${d}</option>`).join('');
+    const me = sel.value, today = todayLocal(), list = [];
+    ['out', 'ret'].forEach(dir => Object.keys(ROUTES).forEach(dest => tripsFor('PITX, Manila', dest, dir, today).forEach(tr => { const a = assignFor(tr, today); if (a.driver === me) list.push({ tr, a }); })));
+    list.sort((x, y) => parseTime(x.tr.dep) - parseTime(y.tr.dep));
+    $('drvTrips').innerHTML = list.length ? list.map(({ tr, a }) => {
+        const k = tripKey(tr.id, today), st = DB.tripState[k], sold = occupied(tr.id, tr.kind, today).size;
+        const boarded = manifestList(tr, today).filter(x => x.boarded).length;
+        return `<div class="card p-5">
+            <div class="flex justify-between items-start gap-3"><div><div class="font-mono font-black text-brand-blue">${tr.id}</div><div class="font-black text-slate-800 text-lg leading-tight">${esc(short(tr.from))} ➔ ${esc(short(tr.to))}</div>
+                <div class="text-sm text-slate-500">${tr.dep} · ${tr.className} · Bus ${a.bus}</div></div>
+                <span class="pill ${st ? (st.arrived ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-green-50 text-green-700 border-green-200') : 'bg-blue-50 text-blue-700 border-blue-200'}">${st ? (st.arrived ? 'Arrived' : 'On the road') : 'Scheduled'}</span></div>
+            <div class="grid grid-cols-3 gap-2 text-center my-4">
+                <div class="bg-slate-50 rounded-xl py-2"><div class="text-xl font-black text-slate-800">${sold}</div><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Booked</div></div>
+                <div class="bg-slate-50 rounded-xl py-2"><div class="text-xl font-black text-slate-800">${boarded}</div><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Scanned</div></div>
+                <div class="bg-slate-50 rounded-xl py-2"><div class="text-xl font-black text-slate-800">${st ? st.head : '–'}</div><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Head count</div></div>
+            </div>
+            ${!st ? `<div class="flex gap-3 items-end"><div class="flex-1"><label class="lbl" for="head_${tr.id}">Head count on board</label><input id="head_${tr.id}" type="number" min="0" max="${BUS[tr.kind].total}" value="${boarded || sold}" class="inp !py-2.5"></div><button onclick="drvStart('${tr.id}')" class="btn-blue px-5 py-2.5">Start trip</button></div>`
+                : !st.arrived ? `<button onclick="drvArrive('${tr.id}')" class="btn-blue w-full py-3">Mark arrived</button>` : `<p class="text-sm text-slate-500">Trip closed at ${new Date(st.arrived).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}.</p>`}
+        </div>`;
+    }).join('') : '<div class="card p-8 text-center text-sm text-slate-500">No trips are assigned to this driver today. The dispatcher assigns buses and drivers in the operator console.</div>';
+}
+function drvStart(id) {
+    const head = parseInt($('head_' + id).value) || 0;
+    DB.tripState[tripKey(id, todayLocal())] = { started: Date.now(), head }; save(); renderDriver();
+    toast(`Trip ${id} started with ${head} on board. Dispatch can see it.`);
+}
+function drvArrive(id) { const st = DB.tripState[tripKey(id, todayLocal())]; if (!st) return; st.arrived = Date.now(); save(); renderDriver(); toast(`Trip ${id} marked arrived.`); }
+
+/* ------------------------------- operator: requests, ratings, promo codes */
+
+const allPromos = () => { const p = {}; Object.entries(PROMOS).forEach(([c, v]) => p[c] = Object.assign({ active: true }, v)); Object.entries(DB.promos).forEach(([c, v]) => p[c] = Object.assign({}, p[c] || {}, v)); return p; };
+function opsApproveRefund(ref) {
+    const b = DB.bookings.find(x => x.ref === ref); if (!b) return;
+    b.refundStatus = 'paid'; save();
+    notify('Refund sent', `${formatPHP(b.refund)} for booking ${b.ref} is on its way to your ${b.method}. It can take 3 to 5 banking days to show.`, 'ref-' + b.ref, true);
+    renderOps(); toast(`Refund of ${formatPHP(b.refund)} approved for ${b.ref}.`);
+}
+function opsGroupDone(ref) { const g = DB.groups.find(x => x.ref === ref); if (g) { g.status = 'contacted'; save(); renderOps(); } }
+function opsTogglePromo(code) { const p = allPromos()[code]; DB.promos[code] = Object.assign({}, DB.promos[code] || {}, { active: !p.active }); save(); renderOpsQueues(true); }
+function opsAddPromo() {
+    const code = $('prCode').value.trim().toUpperCase(), val = parseInt($('prVal').value), pct = $('prType').value === 'pct';
+    if (!/^[A-Z0-9]{3,12}$/.test(code)) { toast('Use 3 to 12 letters or digits for the code.', 'error'); return; }
+    if (!val || (pct && val > 50)) { toast('Enter a value. Percent codes can take off 50% at most.', 'error'); return; }
+    DB.promos[code] = pct ? { pct: val / 100, label: `${val}% off fares`, active: true } : { off: val, label: `₱${val} off`, active: true };
+    save(); renderOpsQueues(true);
+    toast(`Promo ${code} is live in the passenger app.`);
+}
+const SAMPLE_RATINGS = [[5, 'Driver was careful on the zigzag and the CR was clean.', 'Manila to Naga'], [4, 'Left ten minutes late but made it up. Recliner is worth it.', 'Manila to Daet'], [3, 'Aircon was too cold at night. Bring a jacket.', 'Daet to Manila']];
+function renderOpsQueues(force) {
+    const box = $('opsQueues');
+    if (!force && document.activeElement && box.contains(document.activeElement)) return;
+    const refunds = DB.bookings.filter(b => b.status === 'cancelled' && b.refundStatus === 'pending');
+    const mine = DB.bookings.filter(b => b.rating);
+    const avg = ((4.6 * 128 + mine.reduce((a, b) => a + b.rating.stars, 0)) / (128 + mine.length)).toFixed(1);
+    const stars = (n) => '<span class="text-accent-gold whitespace-nowrap">' + '<i class="fa-solid fa-star text-xs"></i>'.repeat(n) + '</span>';
+    const empty = (t) => `<p class="text-sm text-slate-500">${t}</p>`;
+    const promos = allPromos();
+    box.innerHTML = `
+        <div class="card p-5"><h3 class="font-black text-slate-800 mb-3"><i class="fa-solid fa-rotate-left text-brand-blue mr-2"></i>Refund requests <span class="text-slate-400 font-bold">(${refunds.length})</span></h3>
+            <div class="space-y-3">${refunds.length ? refunds.map(b => `<div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0"><div class="min-w-0"><div class="font-mono font-bold text-sm">${b.ref}</div><div class="text-xs text-slate-500">${esc(short(b.legs[0].from))} to ${esc(short(b.legs[0].to))} · ${formatPHP(b.refund)} to ${b.method}</div></div><button onclick="opsApproveRefund('${b.ref}')" class="btn-blue px-4 py-2 text-xs whitespace-nowrap">Approve</button></div>`).join('') : empty('No refunds waiting. A cancellation in the passenger app lands here.')}</div></div>
+        <div class="card p-5"><h3 class="font-black text-slate-800 mb-3"><i class="fa-solid fa-people-group text-brand-blue mr-2"></i>Group requests <span class="text-slate-400 font-bold">(${DB.groups.filter(g => g.status === 'new').length})</span></h3>
+            <div class="space-y-3">${DB.groups.length ? DB.groups.map(g => `<div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0"><div class="min-w-0"><div class="font-bold text-sm" data-notr>${esc(g.name)} · ${g.pax} pax</div><div class="text-xs text-slate-500" data-notr>${esc(short(g.route))} · ${fmtDate(g.date)} · ${esc(g.mobile)}${g.notes ? ' · ' + esc(g.notes) : ''}</div></div>${g.status === 'new' ? `<button onclick="opsGroupDone('${g.ref}')" class="btn-ghost px-4 py-2 text-xs whitespace-nowrap">Mark called</button>` : '<span class="pill bg-green-50 text-green-700 border-green-200">Called</span>'}</div>`).join('') : empty('No group requests yet.')}</div>
+            <h3 class="font-black text-slate-800 mt-5 mb-2"><i class="fa-solid fa-hourglass-half text-brand-blue mr-2"></i>Waitlist <span class="text-slate-400 font-bold">(${DB.waitlist.length})</span></h3>
+            ${DB.waitlist.length ? DB.waitlist.map(w => `<div class="text-sm text-slate-600">${w.tripId} · ${fmtDate(w.date)} · ${w.pax} seats · ${esc(w.mobile)}</div>`).join('') : empty('Nobody is waiting for a seat.')}</div>
+        <div class="card p-5"><h3 class="font-black text-slate-800 mb-1"><i class="fa-solid fa-star text-brand-blue mr-2"></i>Passenger ratings</h3>
+            <div class="flex items-baseline gap-2 mb-3"><span class="text-3xl font-black text-slate-800">${avg}</span><span class="text-sm text-slate-500">out of 5 · ${128 + mine.length} ratings</span></div>
+            <div class="space-y-3">${mine.map(b => `<div class="text-sm bg-green-50/60 rounded-lg p-2">${stars(b.rating.stars)} <span class="text-slate-500 text-xs">${esc(short(b.legs[0].from))} to ${esc(short(b.legs[0].to))} · from this app</span><div class="text-slate-700" data-notr>${esc(b.rating.text || 'No comment.')}</div></div>`).join('')}
+            ${SAMPLE_RATINGS.map(r => `<div class="text-sm">${stars(r[0])} <span class="text-slate-500 text-xs">${r[2]} · sample</span><div class="text-slate-700">${r[1]}</div></div>`).join('')}</div></div>
+        <form class="card p-5" onsubmit="event.preventDefault(); opsAddPromo();"><h3 class="font-black text-slate-800 mb-3"><i class="fa-solid fa-ticket text-brand-blue mr-2"></i>Promo codes</h3>
+            <div class="space-y-2 mb-4">${Object.entries(promos).map(([c, p]) => `<div class="flex items-center justify-between gap-3 text-sm"><span class="font-mono font-bold">${c}</span><span class="flex-1 text-slate-500">${p.label}</span><button type="button" onclick="opsTogglePromo('${c}')" aria-pressed="${p.active}" class="pill ${p.active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-slate-100 text-slate-500 border-slate-200'}">${p.active ? 'Active' : 'Off'}</button></div>`).join('')}</div>
+            <div class="grid grid-cols-12 gap-2 items-end">
+                <div class="col-span-5"><label class="lbl" for="prCode">New code</label><input id="prCode" required maxlength="12" class="inp !bg-white !py-2 uppercase font-mono" placeholder="PASKO25"></div>
+                <div class="col-span-3"><label class="lbl" for="prType">Type</label><select id="prType" class="inp !bg-white !py-2 !px-2"><option value="pct">% off</option><option value="off">₱ off</option></select></div>
+                <div class="col-span-2"><label class="lbl" for="prVal">Value</label><input id="prVal" type="number" min="1" max="1000" required class="inp !bg-white !py-2 !px-2"></div>
+                <div class="col-span-2"><button class="btn-blue w-full py-2 text-sm">Add</button></div>
+            </div></form>`;
+}
+
+function opsExport() {
+    const rows = opsTrips(), q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines = [['Date', 'Bus', 'Route', 'Departs', 'Class', 'Seat', 'Passenger', 'Fare type', 'Sold via', 'Booking', 'Fare'].join(',')];
+    rows.forEach(r => manifestList(r.tr, r.date).forEach(x => lines.push([r.date, r.tr.id, q(`${short(r.tr.from)} to ${short(r.tr.to)}`), r.tr.dep, q(r.tr.className), x.seat, q(x.name), x.type, x.sample ? `${x.channel} (sample)` : x.channel, x.ref, Math.round(r.tr.fare * (x.type !== 'regular' ? 1 - DISCOUNT : 1))].join(','))));
+    const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = `sales-${rows[0].date}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast(`Sales for ${fmtDate(rows[0].date)} downloaded: ${lines.length - 1} seats.`);
 }
 
 /* ------------------------------------------------------------ help, account */
@@ -1789,7 +2100,7 @@ function saveProfile() {
 function resetDemo() {
     openConfirm({
         title: 'Reset demo data?', body: '<p>This clears the bookings, parcels, points and sign-in saved on this device.</p>', okText: 'Reset', cancelText: 'Back',
-        onOk: () => { DB.bookings = []; DB.parcels = []; DB.profile = null; DB.points = 0; DB.notes = []; DB.follow = []; DB.counter = []; DB.saved = []; DB.fares = null; DB.advisory = null; applyFares(); S.ticket = null; updateBell(); save(); updateAuthUI(); renderAccount(); toast('Demo data cleared'); }
+        onOk: () => { DB.bookings = []; DB.parcels = []; DB.profile = null; DB.points = 0; DB.notes = []; DB.follow = []; DB.counter = []; DB.saved = []; DB.fares = null; DB.advisory = null; DB.waitlist = []; DB.groups = []; DB.promos = {}; DB.staff = null; DB.assign = {}; DB.tripState = {}; applyFares(); S.ticket = null; updateBell(); save(); updateAuthUI(); renderAccount(); toast('Demo data cleared'); }
     });
 }
 async function installApp() {
@@ -1850,7 +2161,9 @@ window.addEventListener('DOMContentLoaded', () => {
         m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
         const h = m.querySelector('h3'); if (h) { h.id = h.id || 'modalTitle' + i; m.setAttribute('aria-labelledby', h.id); }
     });
-    $('opsDate').value = today; $('scanDate').value = today;
+    $('opsDate').value = today; $('scanDate').value = today; $('grDate').min = today; $('grDate').value = addDays(today, 14);
+    $('grRoute').innerHTML = Object.keys(ROUTES).map(d => `<option>${d}</option>`).join('');
+    $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') chatSend(); });
     // translate whatever gets rendered later while Filipino is on
     new MutationObserver(muts => {
         if (DB.lang !== 'fil') return;

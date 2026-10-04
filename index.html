@@ -13,7 +13,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon-192.png">
-    <link href="tailwind.css?v=4" rel="stylesheet">
+    <link href="tailwind.css?v=8" rel="stylesheet">
     <link href="fa/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
@@ -56,6 +56,17 @@
         details > summary::-webkit-details-marker { display: none; }
         details[open] > summary .chev { transform: rotate(180deg); }
         :focus-visible { outline: 3px solid #d4af37; outline-offset: 2px; }
+        /* inner pages open on a brand band that the first card overlaps */
+        .view-page { position: relative; isolation: isolate; }
+        .view-page::before { content: ''; position: absolute; z-index: -1; top: 0; left: 50%; width: 100vw; transform: translateX(-50%); height: 9rem; background: linear-gradient(135deg, #1a2b4c 0%, #24406e 60%, #2f5a8f 100%); }
+        .page-title { color: #fff !important; }
+        .page-sub { color: #cbd5e1 !important; }
+        .card { box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px -14px rgba(15, 23, 42, 0.18); }
+        .tab { position: relative; }
+        .tab.active::before { content: ''; position: absolute; top: 0; left: 28%; right: 28%; height: 3px; border-radius: 0 0 3px 3px; background: currentColor; }
+        button:active:not(:disabled):not(.absolute):not(.fixed) { transform: scale(0.98); }
+        #fareCal::-webkit-scrollbar, #chatChips::-webkit-scrollbar { display: none; }
+        #fareCal, #chatChips { scrollbar-width: none; }
         .tour-ring { outline: 4px solid #d4af37 !important; outline-offset: 4px; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.18); }
         main:focus { outline: none; }
         @media (prefers-reduced-motion: reduce) {
@@ -151,14 +162,17 @@
 
                         <div class="lg:col-span-5 bg-white rounded-3xl shadow-2xl p-5 md:p-8 relative">
                             <div class="flex items-center justify-between mb-5 gap-3">
-                                <h2 class="text-lg md:text-2xl font-black text-brand-blue" data-i18n>Book Your Trip</h2>
+                                <h2 class="text-lg md:text-2xl font-black text-brand-blue whitespace-nowrap" data-i18n>Book Your Trip</h2>
                                 <div class="flex bg-slate-100 rounded-full p-1 text-xs font-bold" role="group" aria-label="Trip type">
                                     <button type="button" id="tripOne" onclick="setTripType(false)" class="whitespace-nowrap px-3 py-1.5 rounded-full bg-white shadow text-brand-blue" data-i18n>One Way</button>
                                     <button type="button" id="tripRound" onclick="setTripType(true)" class="whitespace-nowrap px-3 py-1.5 rounded-full text-slate-500" data-i18n>Round Trip</button>
                                 </div>
                             </div>
                             <form id="searchForm" onsubmit="handleSearch(event)">
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                <div class="relative grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                    <button type="button" onclick="swapDirection()" class="absolute z-10 right-3 top-1/2 -translate-y-1/2 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 sm:top-auto sm:bottom-1.5 sm:translate-y-0 w-9 h-9 rounded-full bg-white border border-slate-200 shadow-md text-brand-blue hover:bg-blue-50 flex items-center justify-center">
+                                        <i class="fa-solid fa-right-left rotate-90 sm:rotate-0 text-sm"></i><span id="swapLbl" class="sr-only">Going to Bicol. Tap to switch to Manila-bound</span>
+                                    </button>
                                     <div id="originCell">
                                         <label for="origin" id="originLbl" class="lbl">Origin</label>
                                         <div class="relative">
@@ -184,9 +198,6 @@
                                         </div>
                                     </div>
                                 </div>
-                                <button type="button" onclick="swapDirection()" class="w-full -mt-1 mb-4 text-xs font-bold text-brand-blue bg-blue-50 hover:bg-blue-100 rounded-lg py-2 px-3 flex items-center justify-center gap-2">
-                                    <i class="fa-solid fa-right-left"></i> <span id="swapLbl">Going to Bicol. Tap to switch to Manila-bound</span>
-                                </button>
                                 <div class="grid grid-cols-2 gap-4 mb-4">
                                     <div>
                                         <label for="date" class="lbl" data-i18n>Departure Date</label>
@@ -207,9 +218,15 @@
                                             <option value="3">3 Passengers</option>
                                             <option value="4">4 Passengers</option>
                                             <option value="5">5 Passengers</option>
+                                            <option value="6">6 Passengers</option>
+                                            <option value="7">7 Passengers</option>
+                                            <option value="8">8 Passengers</option>
+                                            <option value="9">9 Passengers</option>
+                                            <option value="10">10 Passengers</option>
                                         </select>
                                     </div>
                                 </div>
+                                <button type="button" onclick="openModal('groupModal')" class="block -mt-3 mb-4 text-xs font-bold text-brand-blue hover:underline">11 or more? Request a group booking</button>
                                 <button type="submit" id="btnSearchSubmit" class="btn-red w-full font-black py-4 px-6 text-lg tracking-wide uppercase" data-i18n>Search Buses</button>
                             </form>
                         </div>
@@ -396,7 +413,7 @@
         </div>
 
         <!-- RESULTS -->
-        <div id="view-results" class="hidden max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-8">
+        <div id="view-results" class="view-page hidden max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-8">
             <div class="card shadow-md p-5 flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
                 <div>
                     <div class="text-[10px] font-black tracking-widest uppercase text-brand-red mb-1" id="resStep"></div>
@@ -405,6 +422,7 @@
                 </div>
                 <button onclick="navigateTo('view-home')" class="btn-ghost px-6 py-3 text-sm w-full md:w-auto" data-i18n>Modify Search</button>
             </div>
+            <div id="fareCal" class="flex gap-2 overflow-x-auto pb-2 mb-3"></div>
             <div class="flex gap-2 mb-5 text-xs font-bold" id="resFilters">
                 <button onclick="setFilter('all')" data-f="all" class="px-4 py-2 rounded-full border" data-i18n>All</button>
                 <button onclick="setFilter('fc')" data-f="fc" class="px-4 py-2 rounded-full border">First Class</button>
@@ -414,10 +432,10 @@
         </div>
 
         <!-- CHECKOUT -->
-        <div id="view-checkout" class="hidden max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-8">
+        <div id="view-checkout" class="view-page hidden max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-8">
             <div class="flex items-center gap-4 mb-5">
                 <button onclick="abandonCheckout()" aria-label="Back to results" class="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm"><i class="fa-solid fa-arrow-left"></i></button>
-                <h2 class="text-2xl font-black text-brand-blue" data-i18n>Secure Checkout</h2>
+                <h2 class="page-title text-2xl font-black text-brand-blue" data-i18n>Secure Checkout</h2>
             </div>
             <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 mb-6 text-sm font-medium flex items-center gap-3">
                 <i class="fa-regular fa-clock text-amber-500"></i>
@@ -436,6 +454,10 @@
                             <div id="savedPax" class="hidden mb-5"></div>
                             <div id="paxRows" class="space-y-4 mb-5"></div>
                             <p class="text-xs text-slate-500 mb-6"><i class="fa-solid fa-circle-info text-slate-400 mr-1"></i><span data-i18n>Senior citizens, PWDs and students get 20% off the fare. Bring the valid ID for each discounted passenger; it is checked at boarding.</span></p>
+                            <div class="flex items-center justify-between gap-4 mb-6">
+                                <label for="infants" class="flex-1"><span class="block font-bold text-slate-800 text-sm">Infants on lap</span><span class="block text-xs text-slate-500">Under 3 feet tall, free, no seat. One per paying adult.</span></label>
+                                <select id="infants" class="inp !w-28 !py-2.5"><option value="0">None</option><option value="1">1</option><option value="2">2</option></select>
+                            </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
                                 <div>
                                     <label for="chkMobile" class="lbl" data-i18n>Mobile Number (For E-Ticket)</label>
@@ -573,10 +595,11 @@
                     </div>
                     <div class="text-right">
                         <div class="text-[10px] text-accent-gold font-bold uppercase tracking-widest mb-1">Booking Ref</div>
-                        <div class="text-xl md:text-2xl font-mono font-black" id="tktRef"></div>
+                        <div class="text-base sm:text-xl md:text-2xl font-mono font-black whitespace-nowrap" id="tktRef"></div>
                         <div id="tktStatus" class="mt-1"></div>
                     </div>
                 </div>
+                <div class="relative h-0" aria-hidden="true"><span class="absolute -left-3 -top-3 w-6 h-6 rounded-full bg-slate-50 border border-slate-200"></span><span class="absolute -right-3 -top-3 w-6 h-6 rounded-full bg-slate-50 border border-slate-200"></span><div class="border-t-2 border-dashed border-slate-200 mx-6"></div></div>
                 <div class="p-5 md:p-8 grid md:grid-cols-3 gap-6 md:gap-8">
                     <div class="md:col-span-2 space-y-5">
                         <div>
@@ -608,9 +631,9 @@
         </div>
 
         <!-- MY TRIPS -->
-        <div id="view-trips" class="hidden max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
+        <div id="view-trips" class="view-page hidden max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
             <div class="flex items-center justify-between mb-6 gap-4">
-                <h2 class="text-2xl md:text-3xl font-black text-slate-800" data-i18n>My Trips</h2>
+                <h2 class="page-title text-2xl md:text-3xl font-black text-slate-800" data-i18n>My Trips</h2>
                 <button onclick="openModal('manageBookingModal')" class="btn-ghost px-4 py-2.5 text-sm"><i class="fa-solid fa-magnifying-glass mr-1"></i> <span data-i18n>Find a Booking</span></button>
             </div>
             <div id="tripsList" class="space-y-4"></div>
@@ -619,15 +642,15 @@
         </div>
 
         <!-- SCHEDULES -->
-        <div id="view-schedules" class="hidden max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
+        <div id="view-schedules" class="view-page hidden max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
             <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
                 <div>
-                    <h2 class="text-2xl md:text-3xl font-black text-slate-800" data-i18n>Schedules & Fares</h2>
-                    <p class="text-slate-500 text-sm mt-1" data-i18n>Daily departures. Fares are per passenger, before the ₱30 terminal fee.</p>
+                    <h2 class="page-title text-2xl md:text-3xl font-black text-slate-800" data-i18n>Schedules & Fares</h2>
+                    <p class="page-sub text-slate-500 text-sm mt-1" data-i18n>Daily departures. Fares are per passenger, before the ₱30 terminal fee. Fridays and Sundays cost 10% more, Tuesdays and Wednesdays 10% less.</p>
                 </div>
                 <div class="flex gap-3">
                     <div>
-                        <label for="schedOrigin" class="lbl" data-i18n>Boarding at</label>
+                        <label for="schedOrigin" class="lbl page-sub" data-i18n>Boarding at</label>
                         <select id="schedOrigin" class="inp !py-2.5" onchange="renderSchedules()">
                             <option value="PITX, Manila">PITX, Manila</option>
                             <option value="Cubao, Quezon City">Cubao, Quezon City</option>
@@ -635,7 +658,7 @@
                         </select>
                     </div>
                     <div>
-                        <label for="schedDir" class="lbl" data-i18n>Direction</label>
+                        <label for="schedDir" class="lbl page-sub" data-i18n>Direction</label>
                         <select id="schedDir" class="inp !py-2.5" onchange="renderSchedules()">
                             <option value="out">To Bicol</option>
                             <option value="ret">To Manila</option>
@@ -667,7 +690,7 @@
                     </div>
                     <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 md:p-5 mb-6">
                         <div class="flex items-center justify-between gap-3 mb-2"><h3 class="font-black">On the road now</h3><span class="text-xs font-bold text-slate-400" id="mapCount"></span></div>
-                        <div id="routeMap"></div>
+                        <div id="routeMap" class="overflow-x-auto"></div>
                         <div id="mapInfo" class="mt-3 pt-3 border-t border-slate-700"></div>
                     </div>
                     <!-- phone: cards; desktop: table -->
@@ -694,9 +717,9 @@
         </div>
 
         <!-- CARGO -->
-        <div id="view-cargo" class="hidden max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
-            <h2 class="text-2xl md:text-3xl font-black text-slate-800" data-i18n>Cargo & Parcels</h2>
-            <p class="text-slate-500 text-sm mt-1 mb-6" data-i18n>Send a parcel on tonight's bus. Drop it at the terminal counter, the receiver picks it up at the destination terminal.</p>
+        <div id="view-cargo" class="view-page hidden max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
+            <h2 class="page-title text-2xl md:text-3xl font-black text-slate-800" data-i18n>Cargo & Parcels</h2>
+            <p class="page-sub text-slate-500 text-sm mt-1 mb-6" data-i18n>Send a parcel on tonight's bus. Drop it at the terminal counter, the receiver picks it up at the destination terminal.</p>
             <div class="grid lg:grid-cols-3 gap-6">
                 <form id="cargoForm" class="card p-5 md:p-8 lg:col-span-2 space-y-5" onsubmit="event.preventDefault(); bookCargo();">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -738,8 +761,8 @@
         </div>
 
         <!-- HELP -->
-        <div id="view-help" class="hidden max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
-            <h2 class="text-2xl md:text-3xl font-black text-slate-800 mb-6" data-i18n>Help & Travel Info</h2>
+        <div id="view-help" class="view-page hidden max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
+            <h2 class="page-title text-2xl md:text-3xl font-black text-slate-800 mb-6" data-i18n>Help & Travel Info</h2>
 
             <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-8">
                 <h3 class="font-bold text-amber-900 mb-2"><i class="fa-solid fa-triangle-exclamation text-amber-500 mr-2"></i><span data-i18n>Travel advisories</span></h3>
@@ -802,6 +825,17 @@
                 </div>
                 <button onclick="navigateTo('view-scan')" class="btn-red px-5 py-3 whitespace-nowrap"><i class="fa-solid fa-qrcode mr-2"></i>Ticket scanner</button>
             </div>
+            <div id="opsGateWrap" class="hidden">
+                <h3 class="text-xl font-black text-slate-800 mb-1">Who is signing in?</h3>
+                <p class="text-sm text-slate-500 mb-5">Each role sees only what it needs. This demo has no password; the real console signs staff in with their own accounts.</p>
+                <div id="opsGate" class="grid sm:grid-cols-2 gap-4"></div>
+            </div>
+            <div id="opsBody" class="hidden">
+            <div class="flex flex-wrap items-center gap-3 mb-5 text-sm">
+                <span class="pill bg-blue-50 text-blue-700 border-blue-200"><i class="fa-solid fa-user-shield mr-1"></i><span id="opsRole"></span></span>
+                <button onclick="staffSwitch()" class="font-bold text-brand-blue hover:underline">Switch role</button>
+                <button onclick="navigateTo('view-driver')" class="font-bold text-brand-blue hover:underline">Driver view</button>
+            </div>
             <div class="flex flex-wrap gap-3 mb-5">
                 <div><label for="opsDate" class="lbl">Travel date</label><input type="date" id="opsDate" class="inp !py-2.5 !bg-white" onchange="S.manifest = null; renderOps()"></div>
                 <div><label for="opsDir" class="lbl">Direction</label><select id="opsDir" class="inp !py-2.5 !bg-white" onchange="S.manifest = null; renderOps()"><option value="out">To Bicol</option><option value="ret">To Manila</option></select></div>
@@ -816,8 +850,10 @@
                 </div>
             </div>
             <div id="opsManifest" class="card overflow-hidden hidden mb-6"></div>
-            <div id="opsSales" class="card p-5 md:p-6 mb-6"></div>
-            <div id="opsAdmin" class="grid lg:grid-cols-2 gap-6"></div>
+            <div id="opsSales" data-role-only="dispatcher" class="card p-5 md:p-6 mb-6"></div>
+            <div id="opsQueues" data-role-only="dispatcher" class="grid lg:grid-cols-2 gap-6 mb-6"></div>
+            <div id="opsAdmin" data-role-only="dispatcher" class="grid lg:grid-cols-2 gap-6"></div>
+            </div>
         </div>
 
         <!-- TICKET SCANNER (staff demo) -->
@@ -840,9 +876,20 @@
             <p class="text-xs text-slate-500 mt-4">The gate device would read the code with its camera. Each code carries a signature, so an edited or invented code is rejected. In this demo the signature is checked on the device; in production it is checked by the server.</p>
         </div>
 
+        <!-- DRIVER (staff demo) -->
+        <div id="view-driver" data-notr class="hidden max-w-xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
+            <div class="flex items-center gap-4 mb-5">
+                <button onclick="navigateTo('view-ops')" aria-label="Back to operator console" class="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm"><i class="fa-solid fa-arrow-left"></i></button>
+                <div><div class="text-[10px] font-black tracking-widest text-brand-red">STAFF · DEMO</div><h2 class="text-2xl font-black text-slate-800">Driver view</h2></div>
+            </div>
+            <div class="card p-5 mb-5"><label for="drvName" class="lbl">Driver</label><select id="drvName" class="inp" onchange="renderDriver()"></select>
+                <p class="text-xs text-slate-500 mt-2">Today's trips assigned to this driver. Starting a trip records the head count and tells dispatch the bus has left.</p></div>
+            <div id="drvTrips" class="space-y-4"></div>
+        </div>
+
         <!-- ACCOUNT -->
-        <div id="view-account" class="hidden max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
-            <h2 class="text-2xl md:text-3xl font-black text-slate-800 mb-6" data-i18n>Account</h2>
+        <div id="view-account" class="view-page hidden max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in py-6 md:py-10">
+            <h2 class="page-title text-2xl md:text-3xl font-black text-slate-800 mb-6" data-i18n>Account</h2>
             <div id="accountBody" class="space-y-5"></div>
         </div>
     </main>
@@ -1022,7 +1069,7 @@
                     </div>
                 </div>
                 <div class="md:w-2/3 order-1 md:order-2 flex justify-center">
-                    <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-200 max-w-[320px] w-full relative">
+                    <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-200 max-w-[320px] w-full relative rounded-t-[3rem]">
                         <div class="absolute top-3 left-1/2 -translate-x-1/2 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center bg-slate-100 py-1 rounded w-3/4"><i class="fa-solid fa-dharmachakra mr-1"></i> Front / Driver</div>
                         <div id="seatGrid" class="mt-10 mb-4"></div>
                     </div>
@@ -1060,6 +1107,62 @@
         </div>
     </div>
 
+    <!-- Group booking request -->
+    <div id="groupModal" class="modal hidden opacity-0" data-dismiss>
+        <div class="bg-white rounded-3xl w-full max-w-md mx-4 shadow-2xl transform scale-95 transition-transform duration-300 relative overflow-hidden max-h-[92vh] overflow-y-auto" id="groupModalContent">
+            <button onclick="closeModal('groupModal')" aria-label="Close" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"><i class="fa-solid fa-xmark"></i></button>
+            <form id="groupForm" class="p-6 space-y-4" onsubmit="event.preventDefault(); submitGroup();">
+                <div><h3 class="text-xl font-black text-slate-800">Group booking request</h3><p class="text-sm text-slate-500 mt-1">For 11 passengers or more. We call you with a quote within one business day.</p></div>
+                <div><label for="grName" class="lbl">Contact name or organisation</label><input id="grName" required minlength="2" maxlength="60" class="inp"></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label for="grMobile" class="lbl">Mobile</label><input id="grMobile" type="tel" required inputmode="numeric" pattern="09[0-9]{9}" maxlength="11" placeholder="09XXXXXXXXX" title="11-digit mobile number starting with 09" class="inp"></div>
+                    <div><label for="grPax" class="lbl">Passengers</label><input id="grPax" type="number" required min="11" max="200" value="20" class="inp"></div>
+                    <div><label for="grRoute" class="lbl">Destination</label><select id="grRoute" class="inp"></select></div>
+                    <div><label for="grDate" class="lbl">Travel date</label><input id="grDate" type="date" required class="inp"></div>
+                </div>
+                <div><label for="grNotes" class="lbl">Notes (optional)</label><input id="grNotes" maxlength="120" class="inp" placeholder="e.g. school field trip, return same day"></div>
+                <button class="btn-red w-full py-3.5">Send request</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Rate a finished trip -->
+    <div id="rateModal" class="modal hidden opacity-0" data-dismiss>
+        <div class="bg-white rounded-3xl w-full max-w-sm mx-4 shadow-2xl transform scale-95 transition-transform duration-300 p-6 text-center" id="rateModalContent">
+            <h3 class="text-xl font-black text-slate-800">How was your trip?</h3>
+            <p class="text-sm text-slate-500 mt-1 mb-4" id="rateSub" data-notr></p>
+            <div id="rateStars" class="flex justify-center gap-2 mb-4">
+                <button onclick="setStars(1)" aria-label="1 star"><i></i></button><button onclick="setStars(2)" aria-label="2 stars"><i></i></button><button onclick="setStars(3)" aria-label="3 stars"><i></i></button><button onclick="setStars(4)" aria-label="4 stars"><i></i></button><button onclick="setStars(5)" aria-label="5 stars"><i></i></button>
+            </div>
+            <label for="rateText" class="sr-only">Comment</label>
+            <textarea id="rateText" rows="3" maxlength="200" class="inp text-sm" placeholder="Anything we should know? (optional)"></textarea>
+            <p class="text-xs text-red-600 font-medium h-4 mt-2" id="rateMsg"></p>
+            <div class="flex gap-3 mt-2"><button onclick="closeModal('rateModal')" class="btn-ghost flex-1 py-3">Not now</button><button onclick="submitRating()" class="btn-blue flex-1 py-3">Send rating</button></div>
+        </div>
+    </div>
+
+    <!-- Help chat -->
+    <div id="chatWrap" class="no-print">
+        <button id="chatFab" onclick="toggleChat()" aria-label="Help chat" aria-expanded="false" class="fixed right-4 bottom-[5.25rem] xl:bottom-6 z-[65] w-12 h-12 xl:w-14 xl:h-14 rounded-full bg-brand-blue text-white shadow-xl hover:bg-slate-800 flex items-center justify-center text-xl"><i class="fa-solid fa-comments"></i></button>
+        <div id="chatPanel" class="hidden fixed right-4 bottom-[9.5rem] xl:bottom-24 z-[66] w-[min(22rem,calc(100vw-2rem))] h-[min(30rem,calc(100vh-13rem))] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden" role="dialog" aria-label="Help chat">
+            <div class="bg-brand-blue text-white px-4 py-3 flex items-center justify-between gap-3">
+                <div><div class="font-black">Help assistant</div><div class="text-[11px] text-slate-300">Answers from our FAQ and travel rules. Not a live agent.</div></div>
+                <button onclick="toggleChat(false)" aria-label="Close" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="chatLog" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+            <div id="chatChips" class="px-3 pb-2 flex gap-2 overflow-x-auto text-xs font-bold whitespace-nowrap">
+                <button onclick="chatSend('Schedule to Daet')" class="bg-slate-100 hover:bg-blue-50 rounded-full px-3 py-1.5 text-slate-700">Schedule to Daet</button>
+                <button onclick="chatSend('Baggage allowance')" class="bg-slate-100 hover:bg-blue-50 rounded-full px-3 py-1.5 text-slate-700">Baggage allowance</button>
+                <button onclick="chatSend('How do refunds work?')" class="bg-slate-100 hover:bg-blue-50 rounded-full px-3 py-1.5 text-slate-700">How do refunds work?</button>
+                <button onclick="chatSend('Can I bring my pet?')" class="bg-slate-100 hover:bg-blue-50 rounded-full px-3 py-1.5 text-slate-700">Can I bring my pet?</button>
+            </div>
+            <div class="p-3 border-t border-slate-200 flex gap-2">
+                <input id="chatInput" class="inp !py-2.5 text-sm" placeholder="Type your question" aria-label="Type your question" maxlength="140" autocomplete="off">
+                <button onclick="chatSend()" aria-label="Send" class="btn-blue w-11 shrink-0"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
     <!-- Notifications -->
     <div id="notesModal" class="modal hidden opacity-0 !items-start" data-dismiss>
         <div class="bg-white rounded-3xl w-full max-w-md mx-4 mt-20 shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col max-h-[75vh]" id="notesModalContent">
@@ -1086,7 +1189,7 @@
         </div>
     </div>
 
-    <script src="fil.js?v=4"></script>
-    <script src="app.js?v=4"></script>
+    <script src="fil.js?v=8"></script>
+    <script src="app.js?v=8"></script>
 </body>
 </html>
