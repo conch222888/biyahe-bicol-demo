@@ -1,0 +1,110 @@
+# OPTIONAL: production deployment. Manual start only, by the named approver only, for an
+# exact commit that already passed CI. Not active until copied to .github/workflows/.
+#
+# Gates, in order of strength:
+#  1. Production credentials exist only as secrets of the `production` environment, which is
+#     restricted to the default branch. Agent sessions and PR jobs never see them.
+#  2. `environment: production` required reviewers, IF the GitHub plan supports them for this
+#     repository (verify in Settings > Environments; do not assume).
+#  3. The actor check below: only the account in the RELEASE_APPROVER repository variable
+#     can run this job. This works on every plan.
+#  4. The typed confirmation must equal the commit SHA being released.
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full commit SHA to release (must be on main with green CI)
+        required: true
+        type: string
+      confirm:
+        description: Type the same SHA again to confirm a PRODUCTION deployment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Only the release approver may deploy
+        env:
+          ACTOR: ${{ github.actor }}
+          APPROVER: ${{ vars.RELEASE_APPROVER }}
+        run: |
+          if [ -z "$APPROVER" ] || [ "$ACTOR" != "$APPROVER" ]; then
+            echo "Actor '$ACTOR' is not the configured release approver." >&2; exit 1
+          fi
+      - name: Confirmation matches and SHA is well-formed
+        env:
+          SHA: ${{ inputs.sha }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          echo "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "Not a full commit SHA." >&2; exit 1; }
+          [ "$SHA" = "$CONFIRM" ] || { echo "Confirmation does not match." >&2; exit 1; }
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Commit is on main
+        env:
+          SHA: ${{ inputs.sha }}
+        run: git merge-base --is-ancestor "$SHA" origin/main
+      - name: CI passed on this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          n=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success" --jq '.total_count')
+          [ "$n" -ge 1 ] || { echo "No successful CI run for $SHA." >&2; exit 1; }
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - name: Authenticate (TEMPLATE - short-lived credentials via OIDC)
+        run: |
+          echo "Production deploy is not configured for this repository." >&2
+          exit 1
+      - name: Deploy (TEMPLATE)
+        env:
+          SHA: ${{ inputs.sha }}
+        run: ./scripts/deploy.sh production "$SHA"
+      - name: Verify health
+        env:
+          URL: ${{ vars.PRODUCTION_URL }}
+        run: ./scripts/smoke.sh "$URL"
+      - name: Record release evidence
+        if: always()
+        env:
+          SHA: ${{ inputs.sha }}
+          STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "### Production release"
+            echo "- Commit: \`$SHA\`"
+            echo "- Started by: ${{ github.actor }}"
+            echo "- Time (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "- Result: $STATUS"
+            echo "- Rollback: rerun this workflow with the previous release SHA (see docs/DEPLOYMENT.md)"
+          } >> "$GITHUB_STEP_SUMMARY"
