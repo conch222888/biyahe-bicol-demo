@@ -1,0 +1,44 @@
+# OPTIONAL: staging deployment after CI succeeds on the default branch.
+# Not active until copied to .github/workflows/ and the `staging` environment exists with
+# its own credentials (never production's). TEMPLATE: fill in the two marked steps.
+name: Deploy staging
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write # OIDC to the cloud provider; no long-lived keys
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Authenticate (TEMPLATE - short-lived credentials via OIDC)
+        run: |
+          echo "Staging deploy is not configured for this repository." >&2
+          exit 1
+      - name: Deploy (TEMPLATE)
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: ./scripts/deploy.sh staging "$SHA"
+      - name: Smoke test
+        env:
+          URL: ${{ vars.STAGING_URL }}
+        run: ./scripts/smoke.sh "$URL"
